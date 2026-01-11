@@ -10,8 +10,10 @@ if($_SESSION['isadmin'] == 0 || $_SESSION['isadmin'] == 2){
     header("Location: ../logout.php");  
 }
 
-$sql = "SELECT * from users_info where id =(SELECT id from users where username = '{$_SESSION['username']}');";
-$result = mysqli_query($conn, $sql);
+$sql = mysqli_prepare($conn, "SELECT * FROM users_info WHERE id = (SELECT id FROM users WHERE username = ?)");
+mysqli_stmt_bind_param($sql, "s", $_SESSION['username']);
+mysqli_stmt_execute($sql);
+$result = mysqli_stmt_get_result($sql);
 $userid = $_SESSION['id'];
 
 
@@ -28,16 +30,24 @@ if (isset($_POST['submit'])) {
     $uid = $_REQUEST['uid'];
 
     if ((!empty($fname)) && (!empty($lname)) && (!empty($email)) && (!empty($address)) && (!empty($ssn))) {
-        $upq = "UPDATE `users_info` SET `first_name` = '$fname', `last_name` = '$lname' , `phone` = '$phone', `email` = '$email', `address` = '$address', `ssn` = '$ssn', `bank_account` = '$bank' WHERE id = $uid;";
-        $upq2 = "UPDATE `users` SET `email` = '$email' where id =$uid; ";
-        $upload1 = mysqli_query($conn, $upq);
-        $upload2 = mysqli_query($conn, $upq2);
+        $upq = mysqli_prepare(
+            $conn,
+            "UPDATE `users_info`
+             SET `first_name` = ?, `last_name` = ?, `phone` = ?, `email` = ?, `address` = ?, `ssn` = ?, `bank_account` = ?
+             WHERE id = ?"
+        );
+        mysqli_stmt_bind_param($upq, "sssssssi", $fname, $lname, $phone, $email, $address, $ssn, $bank, $uid);
+        $upload1 = mysqli_stmt_execute($upq);
+        $upq2 = mysqli_prepare($conn, "UPDATE `users` SET `email` = ? WHERE id = ?");
+        mysqli_stmt_bind_param($upq2, "si", $email, $uid);
+        $upload2 = mysqli_stmt_execute($upq2);
 
         if ((!empty($npass)) && (!empty($cpass))) {
             if (($npass == $cpass)) {
                 $pass = md5($cpass);
-                $upq3 = "UPDATE `users` SET `password` = '$pass' where id =$uid; ";
-                $upload3 = mysqli_query($conn, $upq3);
+                $upq3 = mysqli_prepare($conn, "UPDATE `users` SET `password` = ? WHERE id = ?");
+                mysqli_stmt_bind_param($upq3, "si", $pass, $uid);
+                $upload3 = mysqli_stmt_execute($upq3);
                 header('Location: ../logout.php');
                 exit;
             }
@@ -60,8 +70,13 @@ if (isset($_POST['submit'])) {
     $inputreason = $_REQUEST['inputreason'];
 
     if ((!empty($leavetype)) && (!empty($fromdate))) {
-        $queryleaveinsert = "INSERT INTO `leave_applications`( `id`,`leave_type`,`from_date`,`to_date`,`reason`) VALUES('$userid','$leavetype','$fromdate','$todate','$inputreason')";
-        $upload4 = mysqli_query($conn, $queryleaveinsert);
+        $queryleaveinsert = mysqli_prepare(
+            $conn,
+            "INSERT INTO `leave_applications` (`id`,`leave_type`,`from_date`,`to_date`,`reason`)
+             VALUES (?,?,?,?,?)"
+        );
+        mysqli_stmt_bind_param($queryleaveinsert, "issss", $userid, $leavetype, $fromdate, $todate, $inputreason);
+        $upload4 = mysqli_stmt_execute($queryleaveinsert);
     } else {
 
         header('Location: leave-application.php');
@@ -91,9 +106,13 @@ if (isset($_POST['submit'])) {
     $date = $_REQUEST['date'];
     $filepath = "../" . $uploadDirectory .  basename($fileName);
 
-    if ((!empty($remname)) && (!empty($date)) && (!empty($filepath)) ) {
-        $queryreminsert = "INSERT INTO `payslips` (`id`,`date`, `file`) VALUES('$remname','$date','$filepath')";
-        $upload5 = mysqli_query($conn, $queryreminsert);
+    if ((!empty($remname)) && (!empty($date)) && (!empty($filepath))) {
+        $queryreminsert = mysqli_prepare(
+            $conn,
+            "INSERT INTO `payslips` (`id`,`date`,`file`) VALUES (?,?,?)"
+        );
+        mysqli_stmt_bind_param($queryreminsert, "sss", $remname, $date, $filepath);
+        $upload5 = mysqli_stmt_execute($queryreminsert);
     }
     else{
         header('Location: payslips.php');
