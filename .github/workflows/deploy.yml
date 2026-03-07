@@ -1,0 +1,137 @@
+name: 'Terraform Apply with Docker'
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        type: choice
+        description: "Select which module to deploy"
+        options: 
+        - module-1
+        - module-2
+        required: true
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read    # Required for checkout
+
+jobs:
+  terraform:
+    name: 'Terraform & Docker'
+    runs-on: ubuntu-latest
+    environment: production
+    env: 
+      AWS_REGION: "eu-central-1"
+      IMAGE_NAME: "awsgoat-hr-app"
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # This replaces the old AWS_ACCESS_KEY_ID / SECRET env variables
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Set Account ID
+      id: account
+      run: |
+        # Since we are already authenticated via OIDC, this command just works
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        echo "ACCOUNT_ID=$ACCOUNT_ID" >> $GITHUB_ENV
+
+    # Generate unique Docker tag (commit SHA)
+    - name: Set Docker Tag
+      run: |
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        echo "IMAGE_TAG=$SHORT_SHA" >> $GITHUB_ENV
+        echo "IMAGE_URI=${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}:$SHORT_SHA" >> $GITHUB_ENV
+
+    # Login to Amazon ECR
+    - name: Login to Amazon ECR
+      run: |
+        aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+    # Create ECR repo if it doesn't exist
+    - name: Create ECR repository
+      run: |
+        aws ecr describe-repositories --repository-names ${{ env.IMAGE_NAME }} || \
+        aws ecr create-repository --repository-name ${{ env.IMAGE_NAME }}
+
+    # Build Docker image
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} modules/${{ github.event.inputs.module }}
+
+    # Tag for ECR
+    - name: Tag Docker image for ECR
+      run: |
+        docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.IMAGE_URI }}
+
+    # Push Docker image
+    - name: Push Docker image to ECR
+      run: |
+        docker push ${{ env.IMAGE_URI }}
+
+    # Update ECS Task Definition JSON
+    - name: Update ECS Task Definition JSON
+      run: |
+        JSON_FILE="modules/${{ github.event.inputs.module }}/task-definition.json"
+        jq --arg image "${{ env.IMAGE_URI }}" --arg name "${{ env.IMAGE_NAME }}" \
+          '.[] | .image = $image | .name = $name' $JSON_FILE > tmp.json && mv tmp.json $JSON_FILE
+        cat $JSON_FILE
+
+    # # Set up Terraform
+    # - name: Set up Terraform
+    #   uses: hashicorp/setup-terraform@v2
+    #   with:
+    #     terraform_version: 1.10.5
+
+    # - name: Terraform Init
+    #   run: | 
+    #     cd modules/${{ github.event.inputs.module }}
+    #     terraform init 
+        
+    # # Installs boto3
+    # - uses: actions/setup-python@v5
+    #   with:
+    #     python-version: 3
+    # - name: install
+    #   run: |
+    #     pip install boto3
+    
+    # - name: Terraform Plan
+    #   id: plan 
+    #   run: | 
+    #     cd modules/${{ github.event.inputs.module }}
+    #     terraform plan -input=false
+    #   continue-on-error: false
+      
+    # - name: Terraform Plan Status
+    #   if: steps.plan.outcome == 'failure'
+    #   run: exit 1
+    
+    # - name: Terraform Apply
+    #   run: | 
+    #     cd modules/${{ github.event.inputs.module }}
+    #     terraform apply -auto-approve -input=false
+    #   continue-on-error: false
+
+    # # Copy tfstate file to s3 bucket
+    # - name: Copy terraform.tfstate file to s3bucket
+    #   if: always()
+    #   run: |
+    #     cd modules/${{ github.event.inputs.module }}
+    #     aws s3 cp ./terraform.tfstate s3://do-not-delete-awsgoat-state-files-${{ env.ACCOUNT_ID }}/terraform.tfstate 
+
+    # # Terraform Output the API Gateway url
+    # - name: Application URL
+    #   run: |
+    #     cd modules/${{ github.event.inputs.module }}
+    #     terraform output
