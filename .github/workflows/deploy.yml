@@ -67,7 +67,7 @@ jobs:
     # Build Docker image
     - name: Build Docker image
       run: |
-        docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} modules/${{ github.event.inputs.module }}
+        docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} modules/${{ github.event.inputs.module }}/src
 
     # Tag for ECR
     - name: Tag Docker image for ECR
