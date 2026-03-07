@@ -82,7 +82,7 @@ jobs:
     # Update ECS Task Definition JSON
     - name: Update ECS Task Definition JSON
       run: |
-        JSON_FILE="modules/${{ github.event.inputs.module }}/resources/ecs/task-definition.json"
+        JSON_FILE="modules/${{ github.event.inputs.module }}/resources/ecs/task_definition.json"
         jq --arg image "${{ env.IMAGE_URI }}" --arg name "${{ env.IMAGE_NAME }}" \
           '.[] | .image = $image | .name = $name' $JSON_FILE > tmp.json && mv tmp.json $JSON_FILE
         cat $JSON_FILE
