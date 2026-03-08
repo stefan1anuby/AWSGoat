@@ -42,29 +42,21 @@ jobs:
         ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
         echo "ACCOUNT_ID=$ACCOUNT_ID" >> $GITHUB_ENV
 
-    # Crucial Step: We MUST pull the state file back from S3 before destroying
-    - name: Download terraform.tfstate from S3
-      run: |
-        cd modules/${{ github.event.inputs.module }}
-        aws s3 cp s3://do-not-delete-awsgoat-state-files-${{ env.ACCOUNT_ID }}/terraform.tfstate ./terraform.tfstate || echo "No state file found in S3"
-
     - name: Set up Terraform
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: 1.10.5
 
+    # This connects to S3 and pulls the correct state for the selected module
     - name: Terraform Init
       run: | 
         cd modules/${{ github.event.inputs.module }}
-        terraform init 
+        terraform init \
+          -backend-config="bucket=do-not-delete-awsgoat-state-files-${{ env.ACCOUNT_ID }}" \
+          -backend-config="key=${{ github.event.inputs.module }}/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}"
 
     - name: Terraform Destroy
       run: | 
         cd modules/${{ github.event.inputs.module }}
         terraform destroy -auto-approve -input=false
-
-    # Optional: Clean up the state file from S3 after destruction is complete
-    - name: Remove state file from S3
-      if: success()
-      run: |
-        aws s3 rm s3://do-not-delete-awsgoat-state-files-${{ env.ACCOUNT_ID }}/terraform.tfstate
