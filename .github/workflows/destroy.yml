@@ -1,0 +1,70 @@
+name: 'Terraform Destroy'
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        type: choice
+        description: "Select which module to DESTROY"
+        options: 
+        - module-1
+        - module-2
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-destroy:
+    name: 'Terraform Destroy'
+    runs-on: ubuntu-latest
+    environment: production
+    env: 
+      AWS_REGION: "eu-central-1"
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Set Account ID
+      run: |
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        echo "ACCOUNT_ID=$ACCOUNT_ID" >> $GITHUB_ENV
+
+    # Crucial Step: We MUST pull the state file back from S3 before destroying
+    - name: Download terraform.tfstate from S3
+      run: |
+        cd modules/${{ github.event.inputs.module }}
+        aws s3 cp s3://do-not-delete-awsgoat-state-files-${{ env.ACCOUNT_ID }}/terraform.tfstate ./terraform.tfstate || echo "No state file found in S3"
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.10.5
+
+    - name: Terraform Init
+      run: | 
+        cd modules/${{ github.event.inputs.module }}
+        terraform init 
+
+    - name: Terraform Destroy
+      run: | 
+        cd modules/${{ github.event.inputs.module }}
+        terraform destroy -auto-approve -input=false
+
+    # Optional: Clean up the state file from S3 after destruction is complete
+    - name: Remove state file from S3
+      if: success()
+      run: |
+        aws s3 rm s3://do-not-delete-awsgoat-state-files-${{ env.ACCOUNT_ID }}/terraform.tfstate
