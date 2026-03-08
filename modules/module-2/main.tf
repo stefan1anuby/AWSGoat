@@ -517,17 +517,6 @@ EOF
   ]
 }
 
-
-/* Creating a S3 Bucket for Terraform state file upload. */
-resource "aws_s3_bucket" "bucket_tf_files" {
-  bucket        = "do-not-delete-awsgoat-state-files-${data.aws_caller_identity.current.account_id}"
-  force_destroy = true
-  tags = {
-    Name        = "Do not delete Bucket"
-    Environment = "Dev"
-  }
-}
-
 output "ad_Target_URL" {
   value = "${aws_alb.application_load_balancer.dns_name}:80/login.php"
 }
