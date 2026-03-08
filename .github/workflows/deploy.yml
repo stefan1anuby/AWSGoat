@@ -98,7 +98,10 @@ jobs:
     - name: Terraform Init
       run: | 
         cd modules/${{ github.event.inputs.module }}
-        terraform init 
+        terraform init \
+          -backend-config="bucket=do-not-delete-awsgoat-state-files-${{ env.ACCOUNT_ID }}" \
+          -backend-config="key=${{ github.event.inputs.module }}/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}"
         
     # Installs boto3
     - uses: actions/setup-python@v5
