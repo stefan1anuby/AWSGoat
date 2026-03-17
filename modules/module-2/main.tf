@@ -430,7 +430,7 @@ resource "aws_ecs_service" "worker" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.target_group.arn
-    container_name   = "aws-goat-m2"
+    container_name   = "awsgoat-hr-app"
     container_port   = 80
   }
   depends_on = [aws_lb_listener.listener]
