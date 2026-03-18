@@ -1,0 +1,52 @@
+name: 'CD: Terraform Deploy'
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: "Module to deploy"
+        required: true
+      image_uri:
+        description: "Full ECR Image URI"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: "eu-central-1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update Task Definition
+        run: |
+          JSON_FILE="modules/${{ github.event.inputs.module }}/resources/ecs/task_definition.json"
+          jq --arg image "${{ github.event.inputs.image_uri }}" \
+             '.[0].image = $image' $JSON_FILE > tmp.json && mv tmp.json $JSON_FILE
+
+      - name: Terraform Init & Apply
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          cd modules/${{ github.event.inputs.module }}
+          terraform init \
+            -backend-config="bucket=do-not-delete-awsgoat-state-files-$ACCOUNT_ID" \
+            -backend-config="key=${{ github.event.inputs.module }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+          terraform apply -auto-approve
+
+      - name: Display Application URL
+        run: |
+          cd modules/${{ github.event.inputs.module }}
+          terraform output
