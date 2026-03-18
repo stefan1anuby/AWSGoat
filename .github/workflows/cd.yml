@@ -33,8 +33,10 @@ jobs:
       - name: Update Task Definition
         run: |
           JSON_FILE="modules/${{ github.event.inputs.module }}/resources/ecs/task_definition.json"
-          jq --arg image "${{ github.event.inputs.image_uri }}" \
-             '.[0].image = $image' $JSON_FILE > tmp.json && mv tmp.json $JSON_FILE
+          jq --arg image "${{ github.event.inputs.image_uri }}" --arg name "${{ github.event.inputs.image_uri }}"\
+             '(.[0].image = $image | .[0].name = $name)' $JSON_FILE > tmp.json && mv tmp.json $JSON_FILE
+          echo "Updated JSON:"
+          cat $JSON_FILE
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
