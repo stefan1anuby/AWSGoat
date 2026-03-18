@@ -1,0 +1,55 @@
+name: 'CI: Build and Push Docker'
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        type: choice
+        description: "Select module"
+        options: [module-1, module-2]
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+  actions: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: "eu-central-1"
+      IMAGE_NAME: "awsgoat-hr-app"
+    outputs:
+      image_uri: ${{ steps.vars.outputs.IMAGE_URI }}
+      module: ${{ github.event.inputs.module }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set Variables (Short SHA)
+        id: vars
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          URI="$ACCOUNT_ID.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}:$SHORT_SHA"
+          
+          echo "IMAGE_URI=$URI" >> $GITHUB_OUTPUT
+          echo "ACCOUNT_ID=$ACCOUNT_ID" >> $GITHUB_ENV
+          echo "IMAGE_TAG=$SHORT_SHA" >> $GITHUB_ENV
+          echo "IMAGE_URI=$URI" >> $GITHUB_ENV
+
+      - name: Login to ECR & Push
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+          aws ecr describe-repositories --repository-names ${{ env.IMAGE_NAME }} || aws ecr create-repository --repository-name ${{ env.IMAGE_NAME }}
+          
+          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} modules/${{ github.event.inputs.module }}/src
+          docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.IMAGE_URI }}
+          docker push ${{ env.IMAGE_URI }}
