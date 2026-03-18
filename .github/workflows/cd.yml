@@ -36,6 +36,11 @@ jobs:
           jq --arg image "${{ github.event.inputs.image_uri }}" \
              '.[0].image = $image' $JSON_FILE > tmp.json && mv tmp.json $JSON_FILE
 
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
       - name: Terraform Init & Apply
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
