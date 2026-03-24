@@ -23,6 +23,12 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+# TODO!!: THIS SHOULD BE PUT IN ANOTHER FILE
+variable "ecs_image_uri" {
+  type        = string
+  description = "Passed from GitHub Actions"
+}
+
 # VPC Config for public access
 resource "aws_vpc" "lab-vpc" {
   cidr_block           = "10.0.0.0/16"
@@ -393,7 +399,13 @@ data "template_file" "user_data" {
 }
 
 resource "aws_ecs_task_definition" "task_definition" {
-  container_definitions    = data.template_file.task_definition_json.rendered
+  container_definitions = templatefile(
+    "${path.module}/resources/ecs/task_definition.json",
+    {
+      container_name = "awsgoat-hr-app"
+      image_uri      = var.ecs_image_uri 
+    }
+  )
   family                   = "ECS-Lab-Task-definition"
   network_mode             = "bridge"
   memory                   = "512"
