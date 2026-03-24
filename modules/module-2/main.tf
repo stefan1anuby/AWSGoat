@@ -424,12 +424,6 @@ resource "aws_ecs_task_definition" "task_definition" {
   }
 }
 
-data "template_file" "task_definition_json" {
-  template = file("${path.module}/resources/ecs/task_definition.json")
-  depends_on = [
-    null_resource.rds_endpoint
-  ]
-}
 
 
 
