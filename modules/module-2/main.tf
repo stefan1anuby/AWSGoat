@@ -23,6 +23,12 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+# TODO!!: THIS SHOULD BE PUT IN ANOTHER FILE
+variable "ecs_image_uri" {
+  type        = string
+  description = "Passed from GitHub Actions"
+}
+
 # VPC Config for public access
 resource "aws_vpc" "lab-vpc" {
   cidr_block           = "10.0.0.0/16"
@@ -393,7 +399,14 @@ data "template_file" "user_data" {
 }
 
 resource "aws_ecs_task_definition" "task_definition" {
-  container_definitions    = data.template_file.task_definition_json.rendered
+  container_definitions = templatefile(
+    "${path.module}/resources/ecs/task_definition.json",
+    {
+      container_name = "awsgoat-hr-app"
+      image_uri      = var.ecs_image_uri 
+      rds_endpoint   = element(split(":", aws_db_instance.database-instance.endpoint), 0)
+    }
+  )
   family                   = "ECS-Lab-Task-definition"
   network_mode             = "bridge"
   memory                   = "512"
@@ -412,12 +425,6 @@ resource "aws_ecs_task_definition" "task_definition" {
   }
 }
 
-data "template_file" "task_definition_json" {
-  template = file("${path.module}/resources/ecs/task_definition.json")
-  depends_on = [
-    null_resource.rds_endpoint
-  ]
-}
 
 
 
@@ -487,35 +494,6 @@ resource "aws_secretsmanager_secret_version" "secret_version" {
 EOF
 }
 
-resource "null_resource" "rds_endpoint" {
-  provisioner "local-exec" {
-    command     = <<EOF
-RDS_URL="${aws_db_instance.database-instance.endpoint}"
-RDS_URL=$${RDS_URL::-5}
-sed -i "s,RDS_ENDPOINT_VALUE,$RDS_URL,g" ${path.module}/resources/ecs/task_definition.json
-EOF
-    interpreter = ["/bin/bash", "-c"]
-  }
-
-  depends_on = [
-    aws_db_instance.database-instance
-  ]
-}
-
-resource "null_resource" "cleanup" {
-  provisioner "local-exec" {
-    command     = <<EOF
-RDS_URL="${aws_db_instance.database-instance.endpoint}"
-RDS_URL=$${RDS_URL::-5}
-sed -i "s,$RDS_URL,RDS_ENDPOINT_VALUE,g" ${path.module}/resources/ecs/task_definition.json
-EOF
-    interpreter = ["/bin/bash", "-c"]
-  }
-
-  depends_on = [
-    null_resource.rds_endpoint, aws_ecs_task_definition.task_definition
-  ]
-}
 
 output "ad_Target_URL" {
   value = "${aws_alb.application_load_balancer.dns_name}:80/login.php"
