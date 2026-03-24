@@ -10,7 +10,7 @@
         "environment": [
             {
               "name": "RDS_ENDPOINT",
-              "value": "RDS_ENDPOINT_VALUE"
+              "value": "${rds_endpoint}"
             }
         ],
         "linuxParameters": {
