@@ -42,12 +42,26 @@ jobs:
         ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
         echo "ACCOUNT_ID=$ACCOUNT_ID" >> $GITHUB_ENV
 
+    # --- DEBUG STEP START ---
+    - name: Debug Runner Environment
+      run: |
+        echo "🚀 Debugging Workflow Inputs and Env"
+        echo "Selected Module: ${{ github.event.inputs.module }}"
+        echo "Current Workspace: $GITHUB_WORKSPACE"
+        echo "Checking if directory exists..."
+        if [ -d "modules/${{ github.event.inputs.module }}" ]; then
+          echo "✅ Directory modules/${{ github.event.inputs.module }} found."
+        else
+          echo "❌ Directory modules/${{ github.event.inputs.module }} NOT found!"
+          exit 1
+        fi
+    # --- DEBUG STEP END ---
+
     - name: Set up Terraform
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: 1.10.5
 
-    # This connects to S3 and pulls the correct state for the selected module
     - name: Terraform Init
       run: | 
         cd modules/${{ github.event.inputs.module }}
