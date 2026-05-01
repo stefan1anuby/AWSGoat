@@ -216,6 +216,11 @@ resource "aws_iam_role_policy_attachment" "ecs-instance-role-attachment-3" {
   policy_arn = aws_iam_policy.ecs_instance_policy.arn
 }
 
+resource "aws_iam_role_policy_attachment" "ecs-instance-logs" {
+  role       = aws_iam_role.ecs-instance-role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 resource "aws_iam_policy" "ecs_instance_policy" {
   name = "aws-goat-instance-policy"
   policy = jsonencode({
@@ -398,6 +403,11 @@ data "template_file" "user_data" {
   template = file("${path.module}/resources/ecs/user_data.tpl")
 }
 
+resource "aws_cloudwatch_log_group" "ecs_log_group" {
+  name              = "/ecs/ECS-Lab-Task-definition"
+  retention_in_days = 7 # Automatically deletes logs after a week to save money
+}
+
 resource "aws_ecs_task_definition" "task_definition" {
   container_definitions = templatefile(
     "${path.module}/resources/ecs/task_definition.json",
@@ -406,6 +416,8 @@ resource "aws_ecs_task_definition" "task_definition" {
       image_uri      = var.ecs_image_uri
       rds_endpoint   = element(split(":", aws_db_instance.database-instance.endpoint), 0)
       s3_bucket_name = aws_s3_bucket.uploads_bucket.bucket
+      log_group      = aws_cloudwatch_log_group.ecs_log_group.name
+      aws_region     = data.aws_region.current.name
     }
   )
   family                   = "ECS-Lab-Task-definition"
