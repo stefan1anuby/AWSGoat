@@ -417,7 +417,7 @@ resource "aws_ecs_task_definition" "task_definition" {
       rds_endpoint   = element(split(":", aws_db_instance.database-instance.endpoint), 0)
       s3_bucket_name = aws_s3_bucket.uploads_bucket.bucket
       log_group      = aws_cloudwatch_log_group.ecs_log_group.name
-      aws_region     = data.aws_region.current.name
+      aws_region     = "eu-central-1"
     }
   )
   family                   = "ECS-Lab-Task-definition"
