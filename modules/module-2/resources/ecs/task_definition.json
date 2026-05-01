@@ -11,8 +11,20 @@
             {
               "name": "RDS_ENDPOINT",
               "value": "${rds_endpoint}"
+            },
+            {
+              "name": "S3_BUCKET_NAME",
+              "value": "${s3_bucket_name}"
             }
         ],
+        "logConfiguration": {
+            "logDriver": "awslogs",
+            "options": {
+                "awslogs-group": "${log_group}",
+                "awslogs-region": "${aws_region}",
+                "awslogs-stream-prefix": "ecs"
+            }
+        },
         "linuxParameters": {
             "capabilities": {
                 "add": [

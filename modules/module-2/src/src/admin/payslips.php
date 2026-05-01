@@ -1,6 +1,7 @@
 <?php
 
 include_once '../config.inc';
+include_once '../s3_helper.inc';
 session_start();
 
 if (!isset($_SESSION['username'])) {
@@ -73,23 +74,17 @@ if (isset($_POST['submit'])) {
     exit;
 } else if (isset($_REQUEST['request'])) {
     if( $_FILES['file']['name'] != "" ) {
-        $currentDirectory = getcwd();
-        $uploadDirectory = "/documents/payslips/" ;
-
         $salt = rand(1, 999999);
         $temp= explode('.',$_FILES['file']['name']);
         $extension = end($temp);
         $fileName = bin2hex("$salt" . $_FILES['file']['name']) . "." . "$extension";
-       
-        $uploadPath = $_SERVER['DOCUMENT_ROOT'] .  $uploadDirectory .  basename($fileName);
-        move_uploaded_file( $_FILES['file']['tmp_name'],$uploadPath) or die( "Could not copy file!");
+        $filepath = uploadToS3($_FILES['file']['tmp_name'], "payslips", basename($fileName));
     }
     else {
         die("No file specified!");
     }
     $remname = $_REQUEST['remname'];
     $date = $_REQUEST['date'];
-    $filepath = "../" . $uploadDirectory .  basename($fileName);
 
     if ((!empty($remname)) && (!empty($date)) && (!empty($filepath)) ) {
         $queryreminsert = "INSERT INTO `payslips` (`id`,`date`, `file`) VALUES('$remname','$date','$filepath')";
