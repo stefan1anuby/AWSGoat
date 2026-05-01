@@ -62,4 +62,4 @@ jobs:
     - name: Terraform Destroy
       run: | 
         cd modules/${{ github.event.inputs.module }}
-        terraform destroy -auto-approve -input=false -var="ecs_image_uri=${{ github.event.inputs.image_uri }}
+        terraform destroy -auto-approve -input=false -var="ecs_image_uri=${{ github.event.inputs.image_uri }}"
