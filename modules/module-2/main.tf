@@ -403,8 +403,9 @@ resource "aws_ecs_task_definition" "task_definition" {
     "${path.module}/resources/ecs/task_definition.json",
     {
       container_name = "awsgoat-hr-app"
-      image_uri      = var.ecs_image_uri 
+      image_uri      = var.ecs_image_uri
       rds_endpoint   = element(split(":", aws_db_instance.database-instance.endpoint), 0)
+      s3_bucket_name = aws_s3_bucket.uploads_bucket.bucket
     }
   )
   family                   = "ECS-Lab-Task-definition"
@@ -478,6 +479,52 @@ resource "aws_lb_listener" "listener" {
   }
 }
 
+
+resource "aws_s3_bucket" "uploads_bucket" {
+  bucket        = "aws-goat-m2-uploads-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+
+  tags = {
+    Name = "aws-goat-m2-uploads"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "uploads_bucket_ownership" {
+  bucket = aws_s3_bucket.uploads_bucket.id
+
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "uploads_bucket_public_access" {
+  bucket = aws_s3_bucket.uploads_bucket.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_iam_role_policy" "ecs-task-role-s3-policy" {
+  name = "ecs-task-s3-access"
+  role = aws_iam_role.ecs-task-role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:PutObjectAcl"
+        ]
+        Resource = "${aws_s3_bucket.uploads_bucket.arn}/*"
+      }
+    ]
+  })
+}
 
 resource "aws_secretsmanager_secret" "rds_creds" {
   name                    = "RDS_CREDS"
