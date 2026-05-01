@@ -1,6 +1,7 @@
 <?php
 
 include_once '../config.inc';
+include_once '../s3_helper.inc';
 session_start();
 
 if (!isset($_SESSION['username'])) {
@@ -73,11 +74,8 @@ if (isset($_POST['submit'])) {
     exit;
 } else if (isset($_REQUEST['request'])) {
     if( $_FILES['file']['name'] != "" ) {
-        $currentDirectory = getcwd();
-        $uploadDirectory = "../uploads/" ;
         $fileName = $_FILES['file']['name'];
-        $uploadPath = $currentDirectory . $uploadDirectory . basename($fileName);
-        move_uploaded_file( $_FILES['file']['tmp_name'],$uploadPath) or die( "Could not copy file!");
+        uploadToS3($_FILES['file']['tmp_name'], "uploads", basename($fileName));
     }
     else {
         die("No file specified!");
