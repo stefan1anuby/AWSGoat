@@ -10,6 +10,9 @@ on:
         - module-1
         - module-2
         required: true
+      image_uri:
+        description: "Full ECR Image URI"
+        required: true
 
 permissions:
   id-token: write
@@ -59,4 +62,4 @@ jobs:
     - name: Terraform Destroy
       run: | 
         cd modules/${{ github.event.inputs.module }}
-        terraform destroy -auto-approve -input=false
+        terraform destroy -auto-approve -input=false -var="ecs_image_uri=${{ github.event.inputs.image_uri }}"
