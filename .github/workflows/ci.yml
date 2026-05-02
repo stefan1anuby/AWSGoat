@@ -49,6 +49,17 @@ jobs:
         run: |
           docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} modules/${{ github.event.inputs.module }}/src
 
+      - name: Run Trivy Security Scan
+        # Use a pinned SHA for security (this is a safe, post-remediation commit)
+        uses: aquasecurity/trivy-action@v0.70.0
+        with:
+          image-ref: '${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}'
+          format: 'table'
+          # Scan for both OS vulnerabilities AND hardcoded secrets
+          scanners: 'vuln,secret' 
+          exit-code: '1' # Fails the build if issues are found
+          severity: 'CRITICAL,HIGH'
+
       - name: Login to ECR & Push
         run: |
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
