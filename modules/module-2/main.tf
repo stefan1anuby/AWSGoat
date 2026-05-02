@@ -216,6 +216,11 @@ resource "aws_iam_role_policy_attachment" "ecs-instance-role-attachment-3" {
   policy_arn = aws_iam_policy.ecs_instance_policy.arn
 }
 
+resource "aws_iam_role_policy_attachment" "ecs-instance-logs" {
+  role       = aws_iam_role.ecs-instance-role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 resource "aws_iam_policy" "ecs_instance_policy" {
   name = "aws-goat-instance-policy"
   policy = jsonencode({
@@ -398,13 +403,21 @@ data "template_file" "user_data" {
   template = file("${path.module}/resources/ecs/user_data.tpl")
 }
 
+resource "aws_cloudwatch_log_group" "ecs_log_group" {
+  name              = "/ecs/ECS-Lab-Task-definition"
+  retention_in_days = 7 # Automatically deletes logs after a week to save money
+}
+
 resource "aws_ecs_task_definition" "task_definition" {
   container_definitions = templatefile(
     "${path.module}/resources/ecs/task_definition.json",
     {
       container_name = "awsgoat-hr-app"
-      image_uri      = var.ecs_image_uri 
+      image_uri      = var.ecs_image_uri
       rds_endpoint   = element(split(":", aws_db_instance.database-instance.endpoint), 0)
+      s3_bucket_name = aws_s3_bucket.uploads_bucket.bucket
+      log_group      = aws_cloudwatch_log_group.ecs_log_group.name
+      aws_region     = "eu-central-1"
     }
   )
   family                   = "ECS-Lab-Task-definition"
@@ -478,6 +491,52 @@ resource "aws_lb_listener" "listener" {
   }
 }
 
+
+resource "aws_s3_bucket" "uploads_bucket" {
+  bucket        = "aws-goat-m2-uploads-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+
+  tags = {
+    Name = "aws-goat-m2-uploads"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "uploads_bucket_ownership" {
+  bucket = aws_s3_bucket.uploads_bucket.id
+
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "uploads_bucket_public_access" {
+  bucket = aws_s3_bucket.uploads_bucket.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_iam_role_policy" "ecs-task-role-s3-policy" {
+  name = "ecs-task-s3-access"
+  role = aws_iam_role.ecs-task-role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:PutObjectAcl"
+        ]
+        Resource = "${aws_s3_bucket.uploads_bucket.arn}/*"
+      }
+    ]
+  })
+}
 
 resource "aws_secretsmanager_secret" "rds_creds" {
   name                    = "RDS_CREDS"
