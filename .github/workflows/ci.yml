@@ -51,7 +51,7 @@ jobs:
 
       - name: Run Trivy Security Scan
         # Use a pinned SHA for security (this is a safe, post-remediation commit)
-        uses: aquasecurity/trivy-action@v0.70.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: '${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}'
           format: 'table'
