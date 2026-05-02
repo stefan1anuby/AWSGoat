@@ -56,9 +56,9 @@ jobs:
           image-ref: '${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}'
           format: 'table'
           # Scan for both OS vulnerabilities AND hardcoded secrets
-          scanners: 'vuln,secret' 
+          scanners: 'vuln,secret,misconfig' 
           exit-code: '1' # Fails the build if issues are found
-          severity: 'CRITICAL,HIGH'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
 
       - name: Login to ECR & Push
         run: |
