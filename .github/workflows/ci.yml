@@ -45,11 +45,14 @@ jobs:
           echo "IMAGE_TAG=$SHORT_SHA" >> $GITHUB_ENV
           echo "IMAGE_URI=$URI" >> $GITHUB_ENV
 
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} modules/${{ github.event.inputs.module }}/src
+
       - name: Login to ECR & Push
         run: |
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
           aws ecr describe-repositories --repository-names ${{ env.IMAGE_NAME }} || aws ecr create-repository --repository-name ${{ env.IMAGE_NAME }}
           
-          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} modules/${{ github.event.inputs.module }}/src
           docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.IMAGE_URI }}
           docker push ${{ env.IMAGE_URI }}
