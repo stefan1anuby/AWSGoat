@@ -1,8 +1,5 @@
 repos:
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.24.2
+  - repo: https://github.com/betterleaks/betterleaks
+    rev: v1.2.0 # Make sure this matches a real tag on their GitHub
     hooks:
-      - id: gitleaks
-        name: Gitleaks Secret Scan
-        description: Detect hardcoded secrets using Gitleaks
-        args: ["--verbose"]
+      - id: betterleaks
