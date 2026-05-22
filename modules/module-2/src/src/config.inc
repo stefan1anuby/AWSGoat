@@ -2,7 +2,7 @@
 
 $server = "RDS_ENDPOINT_VALUE";
 $user = "root";
-$pass = "T2kVB3zgeN3YbrKS";
+$pass = "RDS_PASSWORD_VALUE";
 $database = "appdb";
 
 $conn = mysqli_connect($server, $user, $pass, $database);
