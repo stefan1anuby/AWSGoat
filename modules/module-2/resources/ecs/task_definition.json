@@ -15,6 +15,10 @@
             {
               "name": "S3_BUCKET_NAME",
               "value": "${s3_bucket_name}"
+            },
+            {
+            "name": "DB_PASSWORD",
+            "value": "${db_password}"
             }
         ],
         "logConfiguration": {
