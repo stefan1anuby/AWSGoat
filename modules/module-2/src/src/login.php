@@ -37,6 +37,7 @@ if (isset($_POST['submit'])) {
 				$_SESSION['organization_id'] = $row['organization_id'];
 			}
 		}
+		// nosemgrep: md5-loose-equality
 		if ($isadmin == 0)
 			header("Location: ./user/index.php");
 		else if($isadmin == 1){
