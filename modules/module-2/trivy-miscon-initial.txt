@@ -1,0 +1,52 @@
+
+Report Summary
+
+┌──────────────────────────────┬────────────┬───────────────────┐
+│            Target            │    Type    │ Misconfigurations │
+├──────────────────────────────┼────────────┼───────────────────┤
+│ cb9a6a08fb04 (alpine 3.23.3) │   alpine   │         -         │
+├──────────────────────────────┼────────────┼───────────────────┤
+│ workspace/Dockerfile         │ dockerfile │         3         │
+└──────────────────────────────┴────────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+workspace/Dockerfile (dockerfile)
+=================================
+Tests: 21 (SUCCESSES: 18, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+DS-0002 (HIGH): Specify at least 1 USER command in Dockerfile with non-root user as argument
+════════════════════════════════════════
+Running containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile.
+
+See https://avd.aquasec.com/misconfig/ds-0002
+────────────────────────────────────────
+
+
+DS-0029 (HIGH): '--no-install-recommends' flag is missed: 'apt-get install -y python3 sudo vim libcap2-bin fdisk net-tools netcat-openbsd curl unzip zip'
+════════════════════════════════════════
+'apt-get' install should use '--no-install-recommends' to minimize image size.
+
+See https://avd.aquasec.com/misconfig/ds-0029
+────────────────────────────────────────
+ workspace/Dockerfile:7
+────────────────────────────────────────
+   7 [ RUN apt-get install -y python3 sudo vim libcap2-bin fdisk net-tools netcat-openbsd curl unzip zip
+────────────────────────────────────────
+
+
+DS-0029 (HIGH): '--no-install-recommends' flag is missed: 'apt-get install mariadb-client -y'
+════════════════════════════════════════
+'apt-get' install should use '--no-install-recommends' to minimize image size.
+
+See https://avd.aquasec.com/misconfig/ds-0029
+────────────────────────────────────────
+ workspace/Dockerfile:6
+────────────────────────────────────────
+   6 [ RUN apt-get install mariadb-client -y
+────────────────────────────────────────
+
+
