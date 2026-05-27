@@ -1,0 +1,144 @@
+
+Report Summary
+
+┌─────────────────────────────────────────────┬─────────────────┬─────────────────┬───────────────────┐
+│                   Target                    │      Type       │ Vulnerabilities │ Misconfigurations │
+├─────────────────────────────────────────────┼─────────────────┼─────────────────┼───────────────────┤
+│ module-2-app (debian 13.4)                  │     debian      │       32        │         -         │
+├─────────────────────────────────────────────┼─────────────────┼─────────────────┼───────────────────┤
+│ var/www/html/vendor/composer/installed.json │ composer-vendor │        0        │         -         │
+└─────────────────────────────────────────────┴─────────────────┴─────────────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+module-2-app (debian 13.4)
+==========================
+Total: 32 (HIGH: 30, CRITICAL: 2)
+
+┌───────────────────────┬────────────────┬──────────┬────────┬────────────────────┬────────────────────┬──────────────────────────────────────────────────────────────┐
+│        Library        │ Vulnerability  │ Severity │ Status │ Installed Version  │   Fixed Version    │                            Title                             │
+├───────────────────────┼────────────────┼──────────┼────────┼────────────────────┼────────────────────┼──────────────────────────────────────────────────────────────┤
+│ apache2               │ CVE-2026-28780 │ HIGH     │ fixed  │ 2.4.66-1~deb13u2   │ 2.4.67-1~deb13u2   │ Apache HTTP Server: mod_proxy_ajp: Apache HTTP Server        │
+│                       │                │          │        │                    │                    │ mod_proxy_ajp: Arbitrary code execution via...               │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-28780                   │
+├───────────────────────┤                │          │        │                    │                    │                                                              │
+│ apache2-bin           │                │          │        │                    │                    │                                                              │
+│                       │                │          │        │                    │                    │                                                              │
+│                       │                │          │        │                    │                    │                                                              │
+├───────────────────────┤                │          │        │                    │                    │                                                              │
+│ apache2-data          │                │          │        │                    │                    │                                                              │
+│                       │                │          │        │                    │                    │                                                              │
+│                       │                │          │        │                    │                    │                                                              │
+├───────────────────────┤                │          │        │                    │                    │                                                              │
+│ apache2-utils         │                │          │        │                    │                    │                                                              │
+│                       │                │          │        │                    │                    │                                                              │
+│                       │                │          │        │                    │                    │                                                              │
+├───────────────────────┼────────────────┤          │        ├────────────────────┼────────────────────┼──────────────────────────────────────────────────────────────┤
+│ libcap2               │ CVE-2026-4878  │          │        │ 1:2.75-10+b8       │ 1:2.75-10+deb13u1  │ libcap: libcap: Privilege escalation via TOCTOU race         │
+│                       │                │          │        │                    │                    │ condition in cap_set_file()                                  │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-4878                    │
+├───────────────────────┤                │          │        │                    │                    │                                                              │
+│ libcap2-bin           │                │          │        │                    │                    │                                                              │
+│                       │                │          │        │                    │                    │                                                              │
+│                       │                │          │        │                    │                    │                                                              │
+├───────────────────────┼────────────────┼──────────┤        ├────────────────────┼────────────────────┼──────────────────────────────────────────────────────────────┤
+│ libgnutls30t64        │ CVE-2026-33845 │ CRITICAL │        │ 3.8.9-3+deb13u2    │ 3.8.9-3+deb13u4    │ gnutls: GnuTLS: Denial of Service via DTLS zero-length       │
+│                       │                │          │        │                    │                    │ fragment                                                     │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-33845                   │
+│                       ├────────────────┤          │        │                    │                    ├──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-42010 │          │        │                    │                    │ gnutls: gnutls: Authentication Bypass via NUL Character in   │
+│                       │                │          │        │                    │                    │ Username                                                     │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-42010                   │
+│                       ├────────────────┼──────────┤        │                    │                    ├──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-33846 │ HIGH     │        │                    │                    │ gnutls: GnuTLS: Denial of Service via heap buffer overflow   │
+│                       │                │          │        │                    │                    │ in DTLS handshake...                                         │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-33846                   │
+│                       ├────────────────┤          │        │                    │                    ├──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-3833  │          │        │                    │                    │ gnutls: GnuTLS: Policy bypass due to case-sensitive          │
+│                       │                │          │        │                    │                    │ nameConstraints comparison                                   │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-3833                    │
+│                       ├────────────────┤          │        │                    │                    ├──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-42009 │          │        │                    │                    │ gnutls: gnutls: Denial of Service via DTLS packet reordering │
+│                       │                │          │        │                    │                    │ vulnerability                                                │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-42009                   │
+├───────────────────────┼────────────────┤          │        ├────────────────────┼────────────────────┼──────────────────────────────────────────────────────────────┤
+│ libnghttp2-14         │ CVE-2026-27135 │          │        │ 1.64.0-1.1         │ 1.64.0-1.1+deb13u1 │ nghttp2: nghttp2: Denial of Service via malformed HTTP/2     │
+│                       │                │          │        │                    │                    │ frames after session termination...                          │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-27135                   │
+├───────────────────────┼────────────────┤          │        ├────────────────────┼────────────────────┼──────────────────────────────────────────────────────────────┤
+│ libpam-cap            │ CVE-2026-4878  │          │        │ 1:2.75-10+b8       │ 1:2.75-10+deb13u1  │ libcap: libcap: Privilege escalation via TOCTOU race         │
+│                       │                │          │        │                    │                    │ condition in cap_set_file()                                  │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-4878                    │
+├───────────────────────┼────────────────┤          │        ├────────────────────┼────────────────────┼──────────────────────────────────────────────────────────────┤
+│ libpython3.13-minimal │ CVE-2025-13836 │          │        │ 3.13.5-2           │ 3.13.5-2+deb13u1   │ cpython: Excessive read buffering DoS in http.client         │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2025-13836                   │
+│                       ├────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-6100  │          │        │                    │ 3.13.5-2+deb13u2   │ python: Python: Arbitrary code execution or information      │
+│                       │                │          │        │                    │                    │ disclosure via use-after-free in decompression...            │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-6100                    │
+├───────────────────────┼────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│ libpython3.13-stdlib  │ CVE-2025-13836 │          │        │                    │ 3.13.5-2+deb13u1   │ cpython: Excessive read buffering DoS in http.client         │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2025-13836                   │
+│                       ├────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-6100  │          │        │                    │ 3.13.5-2+deb13u2   │ python: Python: Arbitrary code execution or information      │
+│                       │                │          │        │                    │                    │ disclosure via use-after-free in decompression...            │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-6100                    │
+├───────────────────────┼────────────────┤          │        ├────────────────────┼────────────────────┼──────────────────────────────────────────────────────────────┤
+│ linux-libc-dev        │ CVE-2025-38584 │          │        │ 6.12.85-1          │ 6.12.86-1          │ kernel: padata: Fix pd UAF once and for all                  │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2025-38584                   │
+│                       ├────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-23171 │          │        │                    │ 6.12.90-1          │ kernel: Linux kernel: Use-after-free in bonding module can   │
+│                       │                │          │        │                    │                    │ cause system crash or...                                     │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-23171                   │
+│                       ├────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-31419 │          │        │                    │ 6.12.86-1          │ kernel: Linux kernel: Use-after-free in bonding driver leads │
+│                       │                │          │        │                    │                    │ to denial of service...                                      │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-31419                   │
+│                       ├────────────────┤          │        │                    │                    ├──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-31709 │          │        │                    │                    │ kernel: smb: client: validate the whole DACL before          │
+│                       │                │          │        │                    │                    │ rewriting it in cifsacl...                                   │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-31709                   │
+│                       ├────────────────┤          │        │                    │                    ├──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-31715 │          │        │                    │                    │ kernel: f2fs: fix UAF caused by decrementing sbi->nr_pages[] │
+│                       │                │          │        │                    │                    │ in f2fs_write_end_io()                                       │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-31715                   │
+│                       ├────────────────┤          │        │                    │                    ├──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-43284 │          │        │                    │                    │ kernel: "Dirty Frag" ESP XFRM variant is a new universal     │
+│                       │                │          │        │                    │                    │ Local Privilege...                                           │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-43284                   │
+│                       ├────────────────┤          │        │                    │                    ├──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-43500 │          │        │                    │                    │ kernel: "Dirty Frag" RxRPC variant is a new universal Local  │
+│                       │                │          │        │                    │                    │ Privilege Escalation...                                      │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-43500                   │
+│                       ├────────────────┤          │        │                    │                    ├──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-43501 │          │        │                    │                    │ kernel: ipv6: rpl: reserve mac_len headroom when             │
+│                       │                │          │        │                    │                    │ recompressed SRH grows                                       │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-43501                   │
+│                       ├────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-46300 │          │        │                    │ 6.12.90-1          │ kernel: "Fragnesia" is a variant of Dirty Frag vulnerability │
+│                       │                │          │        │                    │                    │ in the ESP/XFRM...                                           │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-46300                   │
+│                       ├────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-46333 │          │        │                    │ 6.12.88-1          │ kernel: Read root-owned files as an unprivileged user        │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-46333                   │
+├───────────────────────┼────────────────┤          │        ├────────────────────┼────────────────────┼──────────────────────────────────────────────────────────────┤
+│ python3.13            │ CVE-2025-13836 │          │        │ 3.13.5-2           │ 3.13.5-2+deb13u1   │ cpython: Excessive read buffering DoS in http.client         │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2025-13836                   │
+│                       ├────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-6100  │          │        │                    │ 3.13.5-2+deb13u2   │ python: Python: Arbitrary code execution or information      │
+│                       │                │          │        │                    │                    │ disclosure via use-after-free in decompression...            │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-6100                    │
+├───────────────────────┼────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│ python3.13-minimal    │ CVE-2025-13836 │          │        │                    │ 3.13.5-2+deb13u1   │ cpython: Excessive read buffering DoS in http.client         │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2025-13836                   │
+│                       ├────────────────┤          │        │                    ├────────────────────┼──────────────────────────────────────────────────────────────┤
+│                       │ CVE-2026-6100  │          │        │                    │ 3.13.5-2+deb13u2   │ python: Python: Arbitrary code execution or information      │
+│                       │                │          │        │                    │                    │ disclosure via use-after-free in decompression...            │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-6100                    │
+├───────────────────────┼────────────────┤          │        ├────────────────────┼────────────────────┼──────────────────────────────────────────────────────────────┤
+│ sudo                  │ CVE-2026-35535 │          │        │ 1.9.16p2-3+deb13u1 │ 1.9.16p2-3+deb13u2 │ sudo: Sudo: Privilege escalation due to failure in privilege │
+│                       │                │          │        │                    │                    │ drop calls                                                   │
+│                       │                │          │        │                    │                    │ https://avd.aquasec.com/nvd/cve-2026-35535                   │
+└───────────────────────┴────────────────┴──────────┴────────┴────────────────────┴────────────────────┴──────────────────────────────────────────────────────────────┘
