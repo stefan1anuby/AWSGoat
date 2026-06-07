@@ -1,0 +1,7 @@
+# Block access to Composer files
+<FilesMatch "^composer\.(json|lock)$">
+    Require all denied
+</FilesMatch>
+
+# Prevent directory listing
+Options -Indexes
