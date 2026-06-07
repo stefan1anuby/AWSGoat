@@ -10,6 +10,15 @@ define('DEBUG', false);
 error_reporting(E_ALL);
 ini_set('display_errors', DEBUG ? 'On' : 'Off');
 
+session_set_cookie_params([
+    'lifetime' => 3600,         // Cookie expires in 1 hour
+    'path' => '/',              // Available across the whole site
+    'domain' => '',             // Default domain
+    'secure' => true,           // ONLY send over HTTPS (Requires SSL/TLS)
+    'httponly' => true,         // Prevent JavaScript from reading the cookie
+    'samesite' => 'Strict'      // Prevent cross-site request forgery
+]);
+
 $server = "RDS_ENDPOINT_VALUE";
 $user = "root";
 $pass = "T2kVB3zgeN3YbrKS";
