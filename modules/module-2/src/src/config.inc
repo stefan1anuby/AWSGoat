@@ -5,6 +5,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-i
 // Prevent Clickjacking attacks
 header("X-Frame-Options: SAMEORIGIN");
 
+// Disable displaying errors to the client when not on DEBUG
 define('DEBUG', false);
 error_reporting(E_ALL);
 ini_set('display_errors', DEBUG ? 'On' : 'Off');
