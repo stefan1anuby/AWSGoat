@@ -482,8 +482,12 @@ resource "aws_lb_target_group" "target_group" {
 
 resource "aws_lb_listener" "listener" {
   load_balancer_arn = aws_alb.application_load_balancer.id
-  port              = "80"
-  protocol          = "HTTP"
+  port              = "443"
+  protocol          = "HTTPS"
+  
+  # Need to provide a valid ACM Certificate ARN here
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = "arn:aws:acm:eu-central-1:123456789012:certificate/my-cert-id" 
 
   default_action {
     type             = "forward"
