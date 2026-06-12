@@ -90,10 +90,19 @@ resource "aws_security_group" "ecs_sg" {
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description     = "Allow outbound traffic to the Database"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.database-security-group.id] # Chained to DB SG
+  }
+
+  egress {
+    description = "Allow HTTPS outbound for AWS APIs (ECR, S3, SSM)"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # Required unless we set up VPC Endpoints
   }
 }
 
@@ -126,10 +135,11 @@ resource "aws_security_group" "database-security-group" {
   }
 
   egress {
+    description = "Allow outbound traffic only within the VPC"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [aws_vpc.lab-vpc.cidr_block]
   }
 
   tags = {
@@ -170,10 +180,11 @@ resource "aws_security_group" "load_balancer_security_group" {
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description     = "Allow outbound traffic only to ECS tasks"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_sg.id] # Chained to ECS SG
   }
   tags = {
     Name = "aws-goat-m2-sg"
