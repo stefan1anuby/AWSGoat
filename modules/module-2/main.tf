@@ -90,19 +90,10 @@ resource "aws_security_group" "ecs_sg" {
   }
 
   egress {
-    description     = "Allow outbound traffic to the Database"
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [aws_security_group.database-security-group.id] # Chained to DB SG
-  }
-
-  egress {
-    description = "Allow HTTPS outbound for AWS APIs (ECR, S3, SSM)"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Required unless we set up VPC Endpoints
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
@@ -135,11 +126,10 @@ resource "aws_security_group" "database-security-group" {
   }
 
   egress {
-    description = "Allow outbound traffic only within the VPC"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = [aws_vpc.lab-vpc.cidr_block]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
@@ -173,18 +163,17 @@ resource "aws_security_group" "load_balancer_security_group" {
   vpc_id      = aws_vpc.lab-vpc.id
 
   ingress {
-    from_port   = 80
-    to_port     = 80
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    description     = "Allow outbound traffic only to ECS tasks"
-    from_port       = 80
-    to_port         = 80
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_sg.id] # Chained to ECS SG
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
   tags = {
     Name = "aws-goat-m2-sg"
@@ -495,10 +484,9 @@ resource "aws_lb_listener" "listener" {
   load_balancer_arn = aws_alb.application_load_balancer.id
   port              = "443"
   protocol          = "HTTPS"
-  
-  # Need to provide a valid ACM Certificate ARN here
   ssl_policy        = "ELBSecurityPolicy-2016-08"
-  certificate_arn   = "arn:aws:acm:eu-central-1:123456789012:certificate/my-cert-id" 
+  # Self Signed Certificate for testing purposes
+  certificate_arn   = "arn:aws:acm:eu-central-1:675266034450:certificate/5c706098-18da-4d6d-bc7f-fded41a59a52"
 
   default_action {
     type             = "forward"
