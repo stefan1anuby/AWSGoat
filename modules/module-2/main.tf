@@ -558,5 +558,5 @@ EOF
 
 
 output "ad_Target_URL" {
-  value = "${aws_alb.application_load_balancer.dns_name}:80/login.php"
+  value = "${aws_alb.application_load_balancer.dns_name}/login.php"
 }
