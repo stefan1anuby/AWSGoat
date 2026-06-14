@@ -39,8 +39,7 @@ function uploadToS3($tmpFile, $s3Prefix, $fileName) {
         $result = $s3->putObject([
             'Bucket' => $bucketName,
             'Key'    => $s3Key,
-            'Body'   => fopen($tmpFile, 'rb'),
-            'ACL'    => 'public-read',
+            'Body'   => fopen($tmpFile, 'rb')
         ]);
 
         // 3. Confirm Success
