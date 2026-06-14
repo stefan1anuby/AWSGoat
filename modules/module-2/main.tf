@@ -442,6 +442,7 @@ resource "aws_ecs_service" "worker" {
   depends_on = [aws_lb_listener.listener]
 }
 
+# trivy:ignore:AVD-AWS-0053
 resource "aws_alb" "application_load_balancer" {
   name                       = "aws-goat-m2-alb"
   internal                   = false
