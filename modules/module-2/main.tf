@@ -41,7 +41,7 @@ resource "aws_vpc" "lab-vpc" {
 resource "aws_subnet" "lab-subnet-public-1" {
   vpc_id                  = aws_vpc.lab-vpc.id
   cidr_block              = "10.0.1.0/24"
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
   availability_zone       = data.aws_availability_zones.available.names[0]
 }
 resource "aws_internet_gateway" "my_vpc_igw" {
@@ -70,7 +70,7 @@ resource "aws_subnet" "lab-subnet-public-1b" {
   vpc_id                  = aws_vpc.lab-vpc.id
   cidr_block              = "10.0.128.0/24"
   availability_zone       = data.aws_availability_zones.available.names[1]
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 }
 resource "aws_route_table_association" "my_vpc_us_east_1b_public" {
   subnet_id      = aws_subnet.lab-subnet-public-1b.id
@@ -89,12 +89,6 @@ resource "aws_security_group" "ecs_sg" {
     security_groups = [aws_security_group.load_balancer_security_group.id]
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 }
 
 # Create Database Subnet Group
@@ -125,13 +119,6 @@ resource "aws_security_group" "database-security-group" {
     security_groups = ["${aws_security_group.ecs_sg.id}"]
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = {
     Name = "rds-db-sg"
   }
@@ -153,6 +140,7 @@ resource "aws_db_instance" "database-instance" {
   availability_zone      = "eu-central-1a"
   db_subnet_group_name   = aws_db_subnet_group.database-subnet-group.name
   vpc_security_group_ids = [aws_security_group.database-security-group.id]
+  storage_encrypted      = true
 }
 
 
@@ -169,12 +157,6 @@ resource "aws_security_group" "load_balancer_security_group" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
   tags = {
     Name = "aws-goat-m2-sg"
   }
@@ -484,7 +466,7 @@ resource "aws_lb_listener" "listener" {
   load_balancer_arn = aws_alb.application_load_balancer.id
   port              = "443"
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
   # Self Signed Certificate for testing purposes
   certificate_arn   = "arn:aws:acm:eu-central-1:675266034450:certificate/5c706098-18da-4d6d-bc7f-fded41a59a52"
 
@@ -559,4 +541,123 @@ EOF
 
 output "ad_Target_URL" {
   value = "${aws_alb.application_load_balancer.dns_name}/login.php"
+}
+
+# Specific egress rules replacing 0.0.0.0/0
+resource "aws_security_group_rule" "ecs_to_db_egress" {
+  type                     = "egress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs_sg.id
+  source_security_group_id = aws_security_group.database-security-group.id
+}
+
+resource "aws_security_group_rule" "alb_to_ecs_egress" {
+  type                     = "egress"
+  from_port                = 0
+  to_port                  = 65535
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.load_balancer_security_group.id
+  source_security_group_id = aws_security_group.ecs_sg.id
+}
+
+# Security group for VPC Endpoints
+resource "aws_security_group" "vpc_endpoints_sg" {
+  name        = "vpc-endpoints-sg"
+  description = "Security group for VPC Endpoints"
+  vpc_id      = aws_vpc.lab-vpc.id
+
+  ingress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_sg.id]
+  }
+}
+
+resource "aws_security_group_rule" "ecs_to_endpoints_egress" {
+  type                     = "egress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs_sg.id
+  source_security_group_id = aws_security_group.vpc_endpoints_sg.id
+}
+
+# S3 Gateway Endpoint
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id       = aws_vpc.lab-vpc.id
+  service_name = "com.amazonaws.eu-central-1.s3"
+  route_table_ids = [aws_route_table.my_vpc_us_east_1_public_rt.id]
+}
+
+# Egress rule for S3 Gateway Endpoint (Prefix List)
+resource "aws_security_group_rule" "ecs_to_s3_gateway_egress" {
+  type              = "egress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  security_group_id = aws_security_group.ecs_sg.id
+  prefix_list_ids   = [aws_vpc_endpoint.s3.prefix_list_id]
+}
+
+# ECR API Endpoint
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# ECR DKR Endpoint
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# ECS Endpoint
+resource "aws_vpc_endpoint" "ecs" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ecs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# ECS Agent Endpoint
+resource "aws_vpc_endpoint" "ecs_agent" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ecs-agent"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# ECS Telemetry Endpoint
+resource "aws_vpc_endpoint" "ecs_telemetry" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ecs-telemetry"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# CloudWatch Logs Endpoint
+resource "aws_vpc_endpoint" "logs" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.logs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
 }
