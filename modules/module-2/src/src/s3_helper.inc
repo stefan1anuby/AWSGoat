@@ -61,4 +61,58 @@ function uploadToS3($tmpFile, $s3Prefix, $fileName) {
         return false;
     }
 }
+
+function getPresignedS3Url($s3Url) {
+    if (!$s3Url || strpos($s3Url, 'amazonaws.com') === false) {
+        return $s3Url;
+    }
+
+    $bucketName = getenv('S3_BUCKET_NAME');
+    $region = getenv('AWS_REGION') ?: 'eu-central-1';
+
+    if (!$bucketName) {
+        return $s3Url;
+    }
+
+    // Extract the S3 Key from the URL
+    // Format: https://bucketname.s3.region.amazonaws.com/s3Key
+    $parsedUrl = parse_url($s3Url);
+    if (!isset($parsedUrl['path'])) {
+        return $s3Url;
+    }
+    
+    // The path starts with a slash, so we remove it
+    $s3Key = ltrim($parsedUrl['path'], '/');
+
+    $config = [
+        'version' => 'latest',
+        'region'  => $region,
+    ];
+
+    $endpointUrl = getenv('S3_ENDPOINT_URL');
+    if ($endpointUrl) {
+        $config['endpoint'] = $endpointUrl;
+        $config['use_path_style_endpoint'] = true;
+        // In path style endpoint, the first part of the path is the bucket name
+        // The URL would be: http://endpoint/bucket/s3Key
+        $pathParts = explode('/', $s3Key, 2);
+        if (count($pathParts) == 2 && $pathParts[0] == $bucketName) {
+            $s3Key = $pathParts[1];
+        }
+    }
+
+    try {
+        $s3 = new S3Client($config);
+        $cmd = $s3->getCommand('GetObject', [
+            'Bucket' => $bucketName,
+            'Key'    => $s3Key
+        ]);
+
+        $request = $s3->createPresignedRequest($cmd, '+15 minutes');
+        return (string) $request->getUri();
+    } catch (Exception $e) {
+        error_log("Error generating presigned URL: " . $e->getMessage());
+        return $s3Url;
+    }
+}
 ?>
