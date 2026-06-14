@@ -439,11 +439,12 @@ resource "aws_ecs_service" "worker" {
 }
 
 resource "aws_alb" "application_load_balancer" {
-  name               = "aws-goat-m2-alb"
-  internal           = false
-  load_balancer_type = "application"
-  subnets            = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
-  security_groups    = [aws_security_group.load_balancer_security_group.id]
+  name                       = "aws-goat-m2-alb"
+  internal                   = false
+  load_balancer_type         = "application"
+  subnets                    = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_groups            = [aws_security_group.load_balancer_security_group.id]
+  drop_invalid_header_fields = true
 
   tags = {
     Name = "aws-goat-m2-alb"
