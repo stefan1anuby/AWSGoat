@@ -1215,3 +1215,27 @@ resource "aws_cloudwatch_log_subscription_filter" "ecs_logs_to_s3" {
   filter_pattern  = "" # Blank means capture every single line (errors, status codes, crashes)
   destination_arn = aws_kinesis_firehose_delivery_stream.container_to_s3_stream.arn
 }
+
+# Athena requires a bucket to store the CSV results of your queries
+resource "aws_s3_bucket" "athena_query_results" {
+  bucket        = "aws-goat-athena-results-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+# Create an Athena Database (logical grouping for your tables)
+resource "aws_athena_database" "lab_logs_db" {
+  name   = "aws_goat_logs_db"
+  bucket = aws_s3_bucket.athena_query_results.bucket
+}
+
+# Create an Athena Workgroup
+resource "aws_athena_workgroup" "lab_workgroup" {
+  name = "aws-goat-workgroup"
+
+  configuration {
+    result_configuration {
+      output_location = "s3://${aws_s3_bucket.athena_query_results.bucket}/output/"
+    }
+  }
+  force_destroy = true
+}
