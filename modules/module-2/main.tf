@@ -667,3 +667,89 @@ resource "aws_vpc_endpoint" "logs" {
   security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
   private_dns_enabled = true
 }
+
+resource "aws_s3_bucket" "cloudtrail_bucket" {
+  bucket        = "aws-goat-cloudtrail-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_policy" "cloudtrail_bucket_policy" {
+  bucket = aws_s3_bucket.cloudtrail_bucket.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSCloudTrailAclCheck"
+        Effect = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.cloudtrail_bucket.arn
+      },
+      {
+        Sid    = "AWSCloudTrailWrite"
+        Effect = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.cloudtrail_bucket.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudwatch_log_group" "cloudtrail_log_group" {
+  name              = "/aws/cloudtrail/main-trail"
+  retention_in_days = 90 # Adjust based on your compliance needs
+}
+
+resource "aws_iam_role" "cloudtrail_cw_role" {
+  name = "CloudTrail-CloudWatch-Role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "cloudtrail_cw_policy" {
+  name = "CloudTrail-CloudWatch-Policy"
+  role = aws_iam_role.cloudtrail_cw_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Effect   = "Allow"
+        # Notice the :* at the end. CloudTrail requires this format to create streams.
+        Resource = "${aws_cloudwatch_log_group.cloudtrail_log_group.arn}:*" 
+      }
+    ]
+  })
+}
+
+resource "aws_cloudtrail" "main_trail" {
+  name                          = "aws-goat-main-trail"
+  s3_bucket_name                = aws_s3_bucket.cloudtrail_bucket.id
+  include_global_service_events = true
+  is_multi_region_trail         = true
+  enable_log_file_validation    = true
+
+  # CloudWatch Integration
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.cloudtrail_log_group.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail_cw_role.arn
+
+  # CRITICAL: Wait for the bucket policy to be attached before creating the trail
+  depends_on = [aws_s3_bucket_policy.cloudtrail_bucket_policy]
+}
