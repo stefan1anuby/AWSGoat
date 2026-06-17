@@ -451,6 +451,14 @@ resource "aws_alb" "application_load_balancer" {
   security_groups            = [aws_security_group.load_balancer_security_group.id]
   drop_invalid_header_fields = true
 
+  # The configuration to activate logging
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs_bucket.id
+    prefix  = "alb-logs"
+    enabled = true
+  }
+  depends_on = [aws_s3_bucket_policy.alb_logs_bucket_policy]
+
   tags = {
     Name = "aws-goat-m2-alb"
   }
