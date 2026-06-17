@@ -1125,3 +1125,93 @@ resource "aws_cloudtrail" "uploads_data_trail" {
   # Ensure permissions are locked in before the trail attempts verification
   depends_on = [aws_s3_bucket_policy.trail_uploads_bucket_policy]
 }
+
+resource "aws_s3_bucket" "container_logs_bucket" {
+  bucket        = "aws-goat-container-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+# IAM Role allowing Firehose to write data into the new S3 bucket
+resource "aws_iam_role" "firehose_container_role" {
+  name = "aws-goat-firehose-container-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "firehose.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "firehose_container_s3_policy" {
+  name = "firehose-container-s3-policy"
+  role = aws_iam_role.firehose_container_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:AbortMultipartUpload",
+        "s3:GetBucketLocation",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:ListBucketMultipartUploads",
+        "s3:PutObject"
+      ]
+      Resource = [
+        aws_s3_bucket.container_logs_bucket.arn,
+        "${aws_s3_bucket.container_logs_bucket.arn}/*"
+      ]
+    }]
+  })
+}
+
+# The Firehose Delivery Stream using the AWS v5+ provider syntax
+resource "aws_kinesis_firehose_delivery_stream" "container_to_s3_stream" {
+  name        = "container-logs-to-s3"
+  destination = "extended_s3"
+
+  extended_s3_configuration {
+    role_arn   = aws_iam_role.firehose_container_role.arn
+    bucket_arn = aws_s3_bucket.container_logs_bucket.arn
+    prefix     = "ecs-app-logs/"
+  }
+}
+
+resource "aws_iam_role" "cwl_to_firehose_container_role" {
+  name = "aws-goat-cwl-to-firehose-container-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "logs.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "cwl_to_firehose_container_policy" {
+  name = "cwl-to-firehose-container-policy"
+  role = aws_iam_role.cwl_to_firehose_container_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["firehose:PutRecord", "firehose:PutRecordBatch"]
+      Resource = aws_kinesis_firehose_delivery_stream.container_to_s3_stream.arn
+    }]
+  })
+}
+
+resource "aws_cloudwatch_log_subscription_filter" "ecs_logs_to_s3" {
+  name            = "ecs-container-logs-to-s3-filter"
+  role_arn        = aws_iam_role.cwl_to_firehose_container_role.arn
+  log_group_name  = aws_cloudwatch_log_group.ecs_log_group.name # Points to your container log group
+  filter_pattern  = "" # Blank means capture every single line (errors, status codes, crashes)
+  destination_arn = aws_kinesis_firehose_delivery_stream.container_to_s3_stream.arn
+}
