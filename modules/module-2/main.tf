@@ -135,12 +135,16 @@ resource "aws_db_instance" "database-instance" {
   engine_version         = "8.0"
   username               = "root"
   password               = "T2kVB3zgeN3YbrKS"
-  parameter_group_name   = "default.mysql8.0"
+  #parameter_group_name   = "default.mysql8.0"
   skip_final_snapshot    = true
   availability_zone      = "eu-central-1a"
   db_subnet_group_name   = aws_db_subnet_group.database-subnet-group.name
   vpc_security_group_ids = [aws_security_group.database-security-group.id]
   storage_encrypted      = true
+
+  parameter_group_name            = aws_db_parameter_group.rds_logging_params.name
+  option_group_name               = aws_db_option_group.rds_audit_options.name
+  enabled_cloudwatch_logs_exports = ["audit", "error", "general", "slowquery"]
 }
 
 
@@ -873,4 +877,137 @@ resource "aws_flow_log" "vpc_flow_log_cw" {
   tags = {
     Name = "VPC-Flow-Logs-CloudWatch"
   }
+}
+
+# Create an Option Group to enable the Audit Plugin
+resource "aws_db_option_group" "rds_audit_options" {
+  name                 = "aws-goat-audit-options"
+  engine_name          = "mysql"
+  major_engine_version = "8.0"
+  option_group_description = "Enable Audit logging for MySQL 8.0"
+
+  option {
+    option_name = "MARIADB_AUDIT_PLUGIN"
+    option_settings {
+      name  = "SERVER_AUDIT_EVENTS"
+      value = "CONNECT,QUERY" # Logs logins and queries
+    }
+  }
+}
+
+# Create a Parameter Group to enable General and Slow Query logs
+resource "aws_db_parameter_group" "rds_logging_params" {
+  name   = "aws-goat-db-parameters"
+  family = "mysql8.0"
+  description = "Enable General and Slow Query logging"
+
+  parameter {
+    name  = "general_log"
+    value = "1"
+  }
+  
+  parameter {
+    name  = "slow_query_log"
+    value = "1"
+  }
+  
+  parameter {
+    name  = "long_query_time"
+    value = "2" # Logs any query taking longer than 2 seconds
+  }
+}
+
+# Explicitly create the log groups to control retention
+resource "aws_cloudwatch_log_group" "rds_audit_logs" {
+  name              = "/aws/rds/instance/aws-goat-db/audit"
+  retention_in_days = 7
+}
+
+resource "aws_cloudwatch_log_group" "rds_error_logs" {
+  name              = "/aws/rds/instance/aws-goat-db/error"
+  retention_in_days = 7
+}
+
+resource "aws_cloudwatch_log_group" "rds_general_logs" {
+  name              = "/aws/rds/instance/aws-goat-db/general"
+  retention_in_days = 7
+}
+
+# The S3 Bucket for Long-term RDS Log Storage
+resource "aws_s3_bucket" "rds_logs_bucket" {
+  bucket        = "aws-goat-rds-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+# IAM Role for Firehose to write to S3
+resource "aws_iam_role" "rds_firehose_role" {
+  name = "rds-firehose-to-s3-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "firehose.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "rds_firehose_policy" {
+  name   = "rds-firehose-s3-policy"
+  role   = aws_iam_role.rds_firehose_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action   = ["s3:AbortMultipartUpload", "s3:GetBucketLocation", "s3:GetObject", "s3:ListBucket", "s3:ListBucketMultipartUploads", "s3:PutObject"]
+      Effect   = "Allow"
+      Resource = [aws_s3_bucket.rds_logs_bucket.arn, "${aws_s3_bucket.rds_logs_bucket.arn}/*"]
+    }]
+  })
+}
+
+# Create the Kinesis Firehose Stream
+resource "aws_kinesis_firehose_delivery_stream" "rds_to_s3_stream" {
+  name        = "rds-logs-to-s3"
+  destination = "extended_s3"
+
+  extended_s3_configuration {
+    role_arn   = aws_iam_role.rds_firehose_role.arn
+    bucket_arn = aws_s3_bucket.rds_logs_bucket.arn
+    prefix     = "mysql-logs/"
+  }
+}
+
+# IAM Role allowing CloudWatch to send data to Firehose
+resource "aws_iam_role" "rds_cwl_to_firehose_role" {
+  name = "rds-cwl-to-firehose-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "logs.eu-central-1.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "rds_cwl_to_firehose_policy" {
+  name   = "rds-cwl-to-firehose-policy"
+  role   = aws_iam_role.rds_cwl_to_firehose_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action   = ["firehose:PutRecord", "firehose:PutRecordBatch"]
+      Effect   = "Allow"
+      Resource = aws_kinesis_firehose_delivery_stream.rds_to_s3_stream.arn
+    }]
+  })
+}
+
+# Connect the RDS CloudWatch Audit Logs to the Firehose Stream
+resource "aws_cloudwatch_log_subscription_filter" "rds_audit_filter" {
+  name            = "rds-audit-to-s3"
+  role_arn        = aws_iam_role.rds_cwl_to_firehose_role.arn
+  log_group_name  = aws_cloudwatch_log_group.rds_audit_logs.name
+  filter_pattern  = "" # Captures everything
+  destination_arn = aws_kinesis_firehose_delivery_stream.rds_to_s3_stream.arn
 }
