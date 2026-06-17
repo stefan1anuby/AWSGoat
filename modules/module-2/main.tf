@@ -1011,3 +1011,117 @@ resource "aws_cloudwatch_log_subscription_filter" "rds_audit_filter" {
   filter_pattern  = "" # Captures everything
   destination_arn = aws_kinesis_firehose_delivery_stream.rds_to_s3_stream.arn
 }
+
+
+resource "aws_s3_bucket" "trail_uploads_bucket" {
+  bucket        = "aws-goat-uploads-trail-storage-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_policy" "trail_uploads_bucket_policy" {
+  bucket = aws_s3_bucket.trail_uploads_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSCloudTrailAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.trail_uploads_bucket.arn
+      },
+      {
+        Sid    = "AWSCloudTrailWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.trail_uploads_bucket.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudwatch_log_group" "dedicated_trail_log_group" {
+  name              = "/aws/cloudtrail/uploads-bucket-data-events"
+  retention_in_days = 7
+}
+
+resource "aws_iam_role" "dedicated_trail_cw_role" {
+  name = "aws-goat-uploads-trail-cw-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "cloudtrail.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "dedicated_trail_cw_policy" {
+  name = "aws-goat-uploads-trail-cw-policy"
+  role = aws_iam_role.dedicated_trail_cw_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Effect   = "Allow"
+        Resource = "${aws_cloudwatch_log_group.dedicated_trail_log_group.arn}:*"
+      }
+    ]
+  })
+}
+
+resource "aws_cloudtrail" "uploads_data_trail" {
+  name                          = "aws-goat-uploads-data-trail"
+  s3_bucket_name                = aws_s3_bucket.trail_uploads_bucket.id
+  include_global_service_events = false # Disabled to avoid duplicating management events
+  is_multi_region_trail         = false # Can keep false if your bucket resides in only one region
+  enable_log_file_validation    = true
+
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.dedicated_trail_log_group.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.dedicated_trail_cw_role.arn
+
+  # This selector intercepts ONLY S3 data actions on your specific bucket
+  advanced_event_selector {
+    name = "Log data events for the uploads bucket exclusively"
+
+    field_selector {
+      field  = "eventCategory"
+      equals = ["Data"]
+    }
+
+    field_selector {
+      field  = "resources.type"
+      equals = ["AWS::S3::Object"]
+    }
+
+    field_selector {
+      field       = "resources.ARN"
+      # Points directly to the bucket contents. 
+      # (Ensure aws_s3_bucket.uploads_bucket matches your exact local Terraform resource name)
+      starts_with = ["${aws_s3_bucket.uploads_bucket.arn}/"] 
+    }
+  }
+
+  # Ensure permissions are locked in before the trail attempts verification
+  depends_on = [aws_s3_bucket_policy.trail_uploads_bucket_policy]
+}
