@@ -442,6 +442,38 @@ resource "aws_ecs_service" "worker" {
   depends_on = [aws_lb_listener.listener]
 }
 
+data "aws_elb_service_account" "main" {}
+
+# Create the S3 Bucket for the ALB Logs
+resource "aws_s3_bucket" "alb_logs_bucket" {
+  bucket        = "aws-goat-alb-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true # Useful for lab environments so Terraform can easily destroy it
+
+  tags = {
+    Name = "aws-goat-alb-logs"
+  }
+}
+
+# Create the Bucket Policy allowing the ELB service to write to it
+resource "aws_s3_bucket_policy" "alb_logs_bucket_policy" {
+  bucket = aws_s3_bucket.alb_logs_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = data.aws_elb_service_account.main.arn
+        }
+        Action   = "s3:PutObject"
+        # Notice the structure here: it must match the prefix you set in the ALB block below
+        Resource = "${aws_s3_bucket.alb_logs_bucket.arn}/alb-logs/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+      }
+    ]
+  })
+}
+
 # trivy:ignore:AVD-AWS-0053
 resource "aws_alb" "application_load_balancer" {
   name                       = "aws-goat-m2-alb"
