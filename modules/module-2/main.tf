@@ -753,3 +753,84 @@ resource "aws_cloudtrail" "main_trail" {
   # CRITICAL: Wait for the bucket policy to be attached before creating the trail
   depends_on = [aws_s3_bucket_policy.cloudtrail_bucket_policy]
 }
+
+# Create the S3 bucket for VPC Flow Logs
+resource "aws_s3_bucket" "vpc_flow_logs_bucket" {
+  bucket        = "aws-goat-vpc-flow-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+
+  tags = {
+    Name = "aws-goat-vpc-flow-logs"
+  }
+}
+
+# Attach the Flow Log to the VPC and point it to S3
+resource "aws_flow_log" "vpc_flow_log_s3" {
+  log_destination      = aws_s3_bucket.vpc_flow_logs_bucket.arn
+  log_destination_type = "s3"
+  traffic_type         = "ALL"
+  vpc_id               = aws_vpc.lab-vpc.id
+
+  tags = {
+    Name = "VPC-Flow-Logs-S3"
+  }
+}
+
+# Create the CloudWatch Log Group
+resource "aws_cloudwatch_log_group" "vpc_flow_log_group" {
+  name              = "/aws/vpc/flow-logs"
+  retention_in_days = 7 # Adjust based on your needs
+}
+
+# Create the IAM Role for VPC Flow Logs
+resource "aws_iam_role" "vpc_flow_log_role" {
+  name = "vpc-flow-log-cw-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "vpc-flow-logs.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Grant the role permission to write to CloudWatch
+resource "aws_iam_role_policy" "vpc_flow_log_policy" {
+  name = "vpc-flow-log-cw-policy"
+  role = aws_iam_role.vpc_flow_log_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Attach the second Flow Log to the VPC and point it to CloudWatch
+resource "aws_flow_log" "vpc_flow_log_cw" {
+  iam_role_arn    = aws_iam_role.vpc_flow_log_role.arn
+  log_destination = aws_cloudwatch_log_group.vpc_flow_log_group.arn
+  traffic_type    = "ALL"
+  vpc_id          = aws_vpc.lab-vpc.id
+
+  tags = {
+    Name = "VPC-Flow-Logs-CloudWatch"
+  }
+}
