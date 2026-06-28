@@ -1277,3 +1277,99 @@ resource "aws_guardduty_detector_feature" "runtime_monitoring" {
     status = "ENABLED"
   }
 }
+
+# 1. Create the WAF Web ACL
+resource "aws_wafv2_web_acl" "alb_waf" {
+  name        = "aws-goat-m2-waf"
+  description = "WAF for aws-goat-m2-alb"
+  
+  # ALBs require the REGIONAL scope
+  scope       = "REGIONAL" 
+
+  # Default action if no rules match
+  default_action {
+    allow {} 
+  }
+
+  # Example Rule: Block common exploits using AWS Managed Rules
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "AWSManagedRulesCommonRuleSetMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "RestrictLoginRateLimit"
+    priority = 2 # Ensure priority doesn't conflict with other rules
+
+    action {
+      block {} # Block the IP if threshold is crossed
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = 100 # Minimum allowed by AWS WAF is 100
+        aggregate_key_type = "IP"
+
+        # This restricts the rate-limiting ONLY to the /login path
+        scope_down_statement {
+          byte_match_statement {
+            field_to_match {
+              uri_path {}
+            }
+            positional_constraint = "EXACTLY"
+            search_string         = "/login"
+            
+            # Standard text transformations to prevent bypasses via case sensitivity
+            text_transformation {
+              priority = 0
+              type     = "LOWERCASE"
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "RestrictLoginRateLimitMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Visibility config for the overall WAF
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "aws-goat-m2-waf-metric"
+    sampled_requests_enabled   = true
+  }
+
+  tags = {
+    Name = "aws-goat-m2-waf"
+  }
+}
+
+# 2. Attach the WAF to your specific ALB
+resource "aws_wafv2_web_acl_association" "waf_alb_assoc" {
+  # References the ARN of the ALB you provided
+  resource_arn = aws_alb.application_load_balancer.arn 
+  
+  # References the ARN of the WAF created above
+  web_acl_arn  = aws_wafv2_web_acl.alb_waf.arn
+}
