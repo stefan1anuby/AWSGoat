@@ -1239,3 +1239,41 @@ resource "aws_athena_workgroup" "lab_workgroup" {
   }
   force_destroy = true
 }
+
+# 1. Enable the Core GuardDuty Detector
+resource "aws_guardduty_detector" "main" {
+  enable                       = true
+  finding_publishing_frequency = "FIFTEEN_MINUTES"
+
+  tags = {
+    Environment = "Production"
+    ManagedBy   = "Terraform"
+  }
+}
+
+# 2. S3 Protection (Monitors S3 data access events)
+resource "aws_guardduty_detector_feature" "s3_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+# 3. RDS Protection (Monitors Aurora/RDS login anomalies)
+resource "aws_guardduty_detector_feature" "rds_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "RDS_LOGIN_EVENTS"
+  status      = "ENABLED"
+}
+
+# 4. Runtime Monitoring (Covers EC2, ECS, and EKS operating systems)
+resource "aws_guardduty_detector_feature" "runtime_monitoring" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "RUNTIME_MONITORING"
+  status      = "ENABLED"
+
+  # Automatically manage the GuardDuty agent on EC2 instances via SSM
+  additional_configuration {
+    name   = "EC2_AGENT_MANAGEMENT"
+    status = "ENABLED"
+  }
+}
