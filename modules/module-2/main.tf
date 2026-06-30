@@ -1433,3 +1433,92 @@ resource "aws_wafv2_web_acl_association" "waf_alb_assoc" {
   # References the ARN of the WAF created above
   web_acl_arn  = aws_wafv2_web_acl.alb_waf.arn
 }
+
+resource "aws_sns_topic" "security_alerts" {
+  name = "security-incident-alerts"
+}
+
+# Example email subscription (You will need to confirm this via email)
+resource "aws_sns_topic_subscription" "security_team_email" {
+  topic_arn = aws_sns_topic.security_alerts.arn
+  protocol  = "email"
+  # endpoint  = "security@yourdomain.com"
+  endpoint  = "stefaneduard2002@gmail.com"
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_5xx_alarm" {
+  alarm_name          = "Critical-ALB-5XX-Spike"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "HTTPCode_ELB_5XX_Count"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60 # 1-minute window
+  statistic           = "Sum"
+  threshold           = 5 # Alert if more than 20 errors occur in 1 minute
+  alarm_description   = "High volume of 5XX errors detected. Possible DoS or application crash."
+  alarm_actions       = [aws_sns_topic.security_alerts.arn]
+
+  # You must specify WHICH load balancer to monitor using its ARN suffix
+  dimensions = {
+    LoadBalancer = aws_alb.application_load_balancer.arn_suffix
+  }
+}
+
+# 1. Create the Metric Filter for OS Commands
+resource "aws_cloudwatch_log_metric_filter" "ecs_os_commands" {
+  name           = "ECS-OS-Command-Filter"
+  # Looks for exact string matches of common malicious commands in the stdout/stderr
+  pattern        = "?\"/bin/bash\" ?\"/bin/sh\" ?\"wget \" ?\"curl \" ?\"cat /etc/\" ?\"nc -\""
+  log_group_name = "/ecs/ECS-Lab-Task-definition" # Replace with your ECS log group
+
+  metric_transformation {
+    name      = "SuspiciousOSCommandCount"
+    namespace = "CustomSecurityMetrics"
+    value     = "1"
+  }
+}
+
+# 2. Trigger the Alarm (Immediate response)
+resource "aws_cloudwatch_metric_alarm" "ecs_os_command_alarm" {
+  alarm_name          = "Critical-ECS-Unauthorized-OS-Command"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = aws_cloudwatch_log_metric_filter.ecs_os_commands.metric_transformation[0].name
+  namespace           = aws_cloudwatch_log_metric_filter.ecs_os_commands.metric_transformation[0].namespace
+  period              = 60 
+  statistic           = "Sum"
+  threshold           = 1 # Alert immediately on a SINGLE occurrence
+  alarm_description   = "Unexpected OS command execution detected in ECS container. Probable initial compromise."
+  alarm_actions       = [aws_sns_topic.security_alerts.arn]
+}
+
+# 1. Create the Metric Filter for text-based Access Logs
+resource "aws_cloudwatch_log_metric_filter" "admin_bulk_changes" {
+  name           = "Admin-Bulk-Change-Filter"
+  log_group_name = aws_cloudwatch_log_group.ecs_log_group.name
+
+  # This pattern matches standard Nginx/Apache log spacing.
+  # It looks for the exact POST request and a successful 200 status code.
+  pattern        = "[ip, id, user, timestamp, request=\"POST /superadmin/updateuser.php*\", status_code=\"200\", size, ...]"
+
+  metric_transformation {
+    name      = "AdminUpdateSuccessCount"
+    namespace = "CustomSecurityMetrics"
+    value     = "1"
+  }
+}
+
+# 2. Trigger the Alarm (5-minute sliding window)
+resource "aws_cloudwatch_metric_alarm" "admin_bulk_change_alarm" {
+  alarm_name          = "Warning-Admin-Bulk-Modification"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = aws_cloudwatch_log_metric_filter.admin_bulk_changes.metric_transformation[0].name
+  namespace           = aws_cloudwatch_log_metric_filter.admin_bulk_changes.metric_transformation[0].namespace
+  period              = 300 # 5-minute window
+  statistic           = "Sum"
+  threshold           = 15  # Alert if more than 15 successful changes occur in 5 minutes
+
+  alarm_description   = "High velocity of admin modifications detected. Verify if this is a planned maintenance task or a compromised credential."
+  alarm_actions       = [aws_sns_topic.security_alerts.arn]
+}
