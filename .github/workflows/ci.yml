@@ -35,6 +35,16 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           config: betterleaks.toml 
+          path: modules/${{ github.event.inputs.module }}/
+
+      - name: Upload Betterleaks Report
+        # This will run even if the previous step fails!
+        if: always() 
+        uses: actions/upload-artifact@v4
+        with:
+          name: betterleaks-sarif-report
+          path: betterleaks-report.sarif
+          retention-days: 5 # Keeps your artifacts tab clean by expiring it shortly
 
       - name: Run Semgrep SAST (Community Edition)
         run: |
