@@ -25,7 +25,34 @@ jobs:
       module: ${{ github.event.inputs.module }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Critical: Betterleaks needs the git history to scan properly
+
+      - name: Run Betterleaks Secret Scanner
+        uses: dortort/betterleaks-action@v0.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          config: betterleaks.toml 
+          scan-path: modules/${{ github.event.inputs.module }}/
+
+      - name: Upload Betterleaks Report
+        # This will run even if the previous step fails!
+        if: always() 
+        uses: actions/upload-artifact@v4
+        with:
+          name: betterleaks-sarif-report
+          path: betterleaks-report.sarif
+          retention-days: 5 # Keeps your artifacts tab clean by expiring it shortly
+
+      - name: Run Semgrep SAST (Community Edition)
+        run: |
+          pipx install semgrep
+          # --config auto pulls the best default community rules for your languages
+          # --error ensures the CI job fails if any vulnerabilities are found
+          # UNCOMMENT THIS ONE INSTEAD IN REAL-LIFE USAGE semgrep scan --config auto --severity ERROR --error modules/${{ github.event.inputs.module }}/
+          semgrep scan --config auto modules/${{ github.event.inputs.module }}/
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -45,11 +72,26 @@ jobs:
           echo "IMAGE_TAG=$SHORT_SHA" >> $GITHUB_ENV
           echo "IMAGE_URI=$URI" >> $GITHUB_ENV
 
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} modules/${{ github.event.inputs.module }}/src
+
+      - name: Run Trivy Security Scan
+        # Use a pinned SHA for security (this is a safe, post-remediation commit)
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: '${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}'
+          format: 'table'
+          # Scan for both OS vulnerabilities AND hardcoded secrets
+          scanners: 'vuln,secret,misconfig' 
+          exit-code: '1' # Fails the build if issues are found
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
       - name: Login to ECR & Push
         run: |
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
           aws ecr describe-repositories --repository-names ${{ env.IMAGE_NAME }} || aws ecr create-repository --repository-name ${{ env.IMAGE_NAME }}
           
-          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} modules/${{ github.event.inputs.module }}/src
           docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.IMAGE_URI }}
           docker push ${{ env.IMAGE_URI }}

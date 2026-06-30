@@ -138,6 +138,13 @@ resource "aws_security_group" "database-security-group" {
 
 }
 
+# Dynamically generate a secure password (never stored in plain text code)
+resource "random_password" "db_password" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
 # Create Database Instance Restored from DB Snapshots
 # terraform aws db instance
 resource "aws_db_instance" "database-instance" {
@@ -147,7 +154,7 @@ resource "aws_db_instance" "database-instance" {
   engine                 = "mysql"
   engine_version         = "8.0"
   username               = "root"
-  password               = "T2kVB3zgeN3YbrKS"
+  password               = random_password.db_password.result
   parameter_group_name   = "default.mysql8.0"
   skip_final_snapshot    = true
   availability_zone      = "eu-central-1a"
@@ -415,6 +422,7 @@ resource "aws_ecs_task_definition" "task_definition" {
       container_name = "awsgoat-hr-app"
       image_uri      = var.ecs_image_uri
       rds_endpoint   = element(split(":", aws_db_instance.database-instance.endpoint), 0)
+      db_password    = random_password.db_password.result
       s3_bucket_name = aws_s3_bucket.uploads_bucket.bucket
       log_group      = aws_cloudwatch_log_group.ecs_log_group.name
       aws_region     = "eu-central-1"
@@ -543,15 +551,15 @@ resource "aws_secretsmanager_secret" "rds_creds" {
   recovery_window_in_days = 0
 }
 
+# Inject the dynamic password into Secrets Manager safely
 resource "aws_secretsmanager_secret_version" "secret_version" {
-  secret_id     = aws_secretsmanager_secret.rds_creds.id
-  secret_string = <<EOF
-   {
-    "username": "root",
-    "password": "T2kVB3zgeN3YbrKS"
-   }
-EOF
-}
+  secret_id = aws_secretsmanager_secret.rds_creds.id
+  
+  secret_string = jsonencode({
+    username = "root"
+    password = random_password.db_password.result
+  })
+end
 
 
 output "ad_Target_URL" {
