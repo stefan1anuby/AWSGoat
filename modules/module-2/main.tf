@@ -1352,6 +1352,27 @@ resource "aws_wafv2_web_acl" "alb_waf" {
       sampled_requests_enabled   = true
     }
   }
+  rule {
+    name     = "BlockSQLInjection"
+    priority = 3 
+
+    override_action {
+      none {} # Leave as none so the rule's native 'Block' action takes effect
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesSQLiRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "BlockSQLInjectionMetric"
+      sampled_requests_enabled   = true
+    }
+  }
 
   rule {
     name     = "RestrictLoginRateLimit"
