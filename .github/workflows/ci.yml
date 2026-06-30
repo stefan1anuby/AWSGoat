@@ -25,7 +25,23 @@ jobs:
       module: ${{ github.event.inputs.module }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Critical: Betterleaks needs the git history to scan properly
+
+      - name: Run Betterleaks Secret Scanner
+        uses: dortort/betterleaks-action@v0.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          config: betterleaks.toml 
+
+      - name: Run Semgrep SAST (Community Edition)
+        run: |
+          pipx install semgrep
+          # --config auto pulls the best default community rules for your languages
+          # --error ensures the CI job fails if any vulnerabilities are found
+          semgrep scan --config auto --severity ERROR --error
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
