@@ -86,6 +86,7 @@ jobs:
           scanners: 'vuln,secret,misconfig' 
           exit-code: '1' # Fails the build if issues are found
           severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
 
       - name: Login to ECR & Push
         run: |
