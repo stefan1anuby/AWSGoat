@@ -345,7 +345,7 @@ data "aws_ami" "ecs_optimized_ami" {
 
   filter {
     name   = "name"
-    values = ["amzn2-ami-ecs-hvm-2.0.202*-x86_64-ebs"]
+    values = ["al2023-ami-ecs-hvm-202*-x86_64"]
   }
 }
 
@@ -706,6 +706,45 @@ resource "aws_vpc_endpoint" "ecs_telemetry" {
 resource "aws_vpc_endpoint" "logs" {
   vpc_id              = aws_vpc.lab-vpc.id
   service_name        = "com.amazonaws.eu-central-1.logs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# SSM Core Endpoint (Agent registration and document retrieval)
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# SSM Messages Endpoint (Required for Run Command and SSM Agent communication)
+resource "aws_vpc_endpoint" "ssmmessages" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ssmmessages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# EC2 Messages Endpoint (Required for Session Manager / Interactive Shell access)
+resource "aws_vpc_endpoint" "ec2messages" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+# GuardDuty Data Endpoint (Required for Runtime Monitoring automated agent)
+resource "aws_vpc_endpoint" "guardduty_data" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.guardduty-data"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
   security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
