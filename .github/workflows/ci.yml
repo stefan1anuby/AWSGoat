@@ -35,7 +35,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           config: betterleaks.toml 
-          path: modules/${{ github.event.inputs.module }}/
+          scan-path: modules/${{ github.event.inputs.module }}/
 
       - name: Upload Betterleaks Report
         # This will run even if the previous step fails!
