@@ -1,6 +1,7 @@
 <?php
 
 include_once '../config.inc';
+include_once '../s3_helper.inc';
 session_start();
 
 if (!isset($_SESSION['username'])) {
@@ -342,7 +343,7 @@ if (isset($_POST['submit'])) {
                                                     <td>" . $remrow["type"] . "</td>
                                                     <td>" . $remrow["filed_on"] . "</td>
                                                     <td>" . $remrow["amount"] . "</td>
-                                                    <td> <a href=" . $remrow["file"] . " target='_blank'>
+                                                    <td> <a href=" . getPresignedS3Url($remrow["file"]) . " target='_blank'>
                                                     <button class='btn btn-primary' type='button'>View File</button></a> </td>
                                                     <td>" . $remrow["status"] . "</td>";
                                                 echo "<td>
