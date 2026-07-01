@@ -22,7 +22,19 @@ jobs:
       AWS_REGION: "eu-central-1"
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy IaC Scan
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          # Tells Trivy to scan Infrastructure as Code (Terraform) instead of a container image
+          scan-type: 'config' 
+          scan-ref: 'modules/${{ github.event.inputs.module }}'
+          format: 'table'
+          # Fails the deployment if misconfigurations are found
+          exit-code: '1' 
+          severity: 'CRITICAL,HIGH'
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
