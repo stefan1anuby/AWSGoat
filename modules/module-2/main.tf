@@ -492,6 +492,23 @@ resource "aws_s3_bucket" "uploads_bucket" {
   }
 }
 
+resource "aws_kms_key" "s3_kms_key" {
+  description             = "KMS key used to encrypt s3 bucket objects"
+  deletion_window_in_days = 10
+  enable_key_rotation     = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "uploads_bucket_encryption" {
+  bucket = aws_s3_bucket.uploads_bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      kms_master_key_id = aws_kms_key.s3_kms_key.arn
+      sse_algorithm     = "aws:kms"
+    }
+  }
+}
+
 resource "aws_s3_bucket_ownership_controls" "uploads_bucket_ownership" {
   bucket = aws_s3_bucket.uploads_bucket.id
 
@@ -503,10 +520,10 @@ resource "aws_s3_bucket_ownership_controls" "uploads_bucket_ownership" {
 resource "aws_s3_bucket_public_access_block" "uploads_bucket_public_access" {
   bucket = aws_s3_bucket.uploads_bucket.id
 
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
 
 resource "aws_iam_role_policy" "ecs-task-role-s3-policy" {
@@ -524,6 +541,14 @@ resource "aws_iam_role_policy" "ecs-task-role-s3-policy" {
           "s3:PutObjectAcl"
         ]
         Resource = "${aws_s3_bucket.uploads_bucket.arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:GenerateDataKey",
+          "kms:Decrypt"
+        ]
+        Resource = aws_kms_key.s3_kms_key.arn
       }
     ]
   })
