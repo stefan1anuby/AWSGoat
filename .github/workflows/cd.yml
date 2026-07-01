@@ -47,7 +47,16 @@ jobs:
           terraform apply -auto-approve \
             -var="ecs_image_uri=${{ github.event.inputs.image_uri }}"
 
-      - name: Display Application URL
+      - name: Capture Application URL
+        id: get-url
         run: |
           cd modules/${{ github.event.inputs.module }}
-          terraform output
+          # Extract the raw URL string from Terraform and save it to GitHub's environment
+          APP_URL=$(terraform output -raw application_url)
+          echo "APP_URL=$APP_URL" >> $GITHUB_ENV
+
+      - name: Run OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: '${{ env.APP_URL }}'
+          fail_action: true
