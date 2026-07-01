@@ -1,0 +1,78 @@
+---
+env:
+  contexts:
+    - name: "MyTargetApp"
+      urls:
+        #- "http://app:80/user/index.php"
+        - "http://app:80/login.php"
+      includePaths:
+        - "http://app:80.*"
+      excludePaths:
+        - "http://app:80/logout.php"
+        - "http://app:80/user/logout.php"
+        - ".*logout.*" # Regex fallback to catch any variation
+      authentication:
+        method: "form"
+        parameters:
+          # The URL where the login form is displayed
+          loginPageUrl: "http://app:80/login.php"
+          
+          # The URL where the POST request is actually sent (often the same)
+          loginRequestUrl: "http://app:80/login.php"
+          
+          # The exact structure of your POST data. 
+          # Use {%username%} and {%password%} as placeholders.
+          loginRequestBody: "email={%username%}&password={%password%}&submit=yes"
+          
+        # Highly Recommended: Tell ZAP how to know if the login succeeded
+        verification:
+          method: "response"
+          loggedInRegex: "Payslips" # Text that only appears when logged in
+          #loggedOutRegex: "" # Text that only appears when logged out
+      # --- USER CREDENTIALS ---
+      users:
+        - name: "ScanUser"
+          credentials:
+            #username: "test@test.com"
+            #password: "test"
+            username: "mark@inetechio.com"
+            password: "mark@123"
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  # Job 1: Map out the application using the spider
+  - type: spider
+    parameters:
+      context: "MyTargetApp"
+      user: "ScanUser"
+      maxDuration: 5 # Maximum time in minutes. 0 means unlimited.
+  
+  - type: spiderAjax
+    parameters:
+      context: "MyTargetApp"
+      user: "ScanUser"
+      maxDuration: 5
+
+  # Job 2: Passively wait for the spider's traffic to be analyzed
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  # Job 3: Actively attack the discovered endpoints
+  - type: activeScan
+    parameters:
+      context: "MyTargetApp"
+      user: "ScanUser"
+      policy: "Default Policy"
+
+  # Job 4: Generate the final HTML report
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: /zap/wrk/
+      reportFile: zap-report
+      reportTitle: "ZAP Security Scan Report"
+      reportDescription: "Automated scan executed via Docker"
