@@ -64,7 +64,7 @@ jobs:
         run: |
           cd modules/${{ github.event.inputs.module }}
           # Extract the raw URL string from Terraform and save it to GitHub's environment
-          APP_URL=$(terraform output -raw application_url)
+          APP_URL=$(terraform output -raw ad_Target_URL)
           echo "APP_URL=$APP_URL" >> $GITHUB_ENV
 
       - name: Run OWASP ZAP Baseline Scan
