@@ -575,7 +575,7 @@ resource "aws_secretsmanager_secret_version" "secret_version" {
     username = "root"
     password = random_password.db_password.result
   })
-end
+}
 
 
 output "ad_Target_URL" {
