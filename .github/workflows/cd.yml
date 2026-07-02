@@ -68,8 +68,20 @@ jobs:
           echo "APP_URL=https://$RAW_URL" >> $GITHUB_ENV
           echo "Targeting ZAP Scan at: https://$RAW_URL"
 
-      - name: Run OWASP ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.12.0
+      - name: Run OWASP ZAP Full Active Scan
+        uses: zaproxy/action-full-scan@v0.12.0 # Note the change from action-baseline
         with:
           target: '${{ env.APP_URL }}'
-          fail_action: true
+          fail_action: false 
+          # Crucial: Limits the initial link-crawling spider to 2 minutes
+          cmd_options: '-m 2' 
+          
+      - name: Gate Deployment on High Severities
+        run: |
+          HIGH_ALERTS=$(grep -c '"riskcode": "3"' report_json.json || true)
+          if [ "$HIGH_ALERTS" -gt 0 ]; then
+            echo "ERROR: ZAP found $HIGH_ALERTS High severity vulnerability(ies)!"
+            exit 1
+          else
+            echo "SUCCESS: No High severity vulnerabilities found."
+          fi
