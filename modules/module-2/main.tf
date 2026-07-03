@@ -37,6 +37,8 @@ resource "aws_vpc" "lab-vpc" {
   tags = {
     Name = "AWS_GOAT_VPC"
   }
+
+  depends_on = [aws_cloudwatch_log_group.vpc_flow_log_group]
 }
 resource "aws_subnet" "lab-subnet-public-1" {
   vpc_id                  = aws_vpc.lab-vpc.id
@@ -152,6 +154,12 @@ resource "aws_db_instance" "database-instance" {
   parameter_group_name            = aws_db_parameter_group.rds_logging_params.name
   option_group_name               = aws_db_option_group.rds_audit_options.name
   enabled_cloudwatch_logs_exports = ["audit", "error", "general", "slowquery"]
+
+  depends_on = [
+    aws_cloudwatch_log_group.rds_audit_logs,
+    aws_cloudwatch_log_group.rds_error_logs,
+    aws_cloudwatch_log_group.rds_general_logs
+  ]
 }
 
 
