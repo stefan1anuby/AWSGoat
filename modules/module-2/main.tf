@@ -125,6 +125,13 @@ resource "aws_security_group" "database-security-group" {
 
 }
 
+# Dynamically generate a secure password (never stored in plain text code)
+resource "random_password" "db_password" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
 # Create Database Instance Restored from DB Snapshots
 # terraform aws db instance
 resource "aws_db_instance" "database-instance" {
@@ -134,7 +141,7 @@ resource "aws_db_instance" "database-instance" {
   engine                 = "mysql"
   engine_version         = "8.0"
   username               = "root"
-  password               = "T2kVB3zgeN3YbrKS"
+  password               = random_password.db_password.result
   #parameter_group_name   = "default.mysql8.0"
   skip_final_snapshot    = true
   availability_zone      = "eu-central-1a"
@@ -405,6 +412,7 @@ resource "aws_ecs_task_definition" "task_definition" {
       container_name = "awsgoat-hr-app"
       image_uri      = var.ecs_image_uri
       rds_endpoint   = element(split(":", aws_db_instance.database-instance.endpoint), 0)
+      db_password    = random_password.db_password.result
       s3_bucket_name = aws_s3_bucket.uploads_bucket.bucket
       log_group      = aws_cloudwatch_log_group.ecs_log_group.name
       aws_region     = "eu-central-1"
@@ -516,7 +524,7 @@ resource "aws_lb_listener" "listener" {
   load_balancer_arn = aws_alb.application_load_balancer.id
   port              = "443"
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"  # betterleaks:allow
   # Self Signed Certificate for testing purposes
   certificate_arn   = "arn:aws:acm:eu-central-1:675266034450:certificate/5c706098-18da-4d6d-bc7f-fded41a59a52"
 
@@ -536,6 +544,23 @@ resource "aws_s3_bucket" "uploads_bucket" {
   }
 }
 
+resource "aws_kms_key" "s3_kms_key" {
+  description             = "KMS key used to encrypt s3 bucket objects"
+  deletion_window_in_days = 10
+  enable_key_rotation     = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "uploads_bucket_encryption" {
+  bucket = aws_s3_bucket.uploads_bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      kms_master_key_id = aws_kms_key.s3_kms_key.arn
+      sse_algorithm     = "aws:kms"
+    }
+  }
+}
+
 resource "aws_s3_bucket_ownership_controls" "uploads_bucket_ownership" {
   bucket = aws_s3_bucket.uploads_bucket.id
 
@@ -547,10 +572,10 @@ resource "aws_s3_bucket_ownership_controls" "uploads_bucket_ownership" {
 resource "aws_s3_bucket_public_access_block" "uploads_bucket_public_access" {
   bucket = aws_s3_bucket.uploads_bucket.id
 
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
 
 resource "aws_iam_role_policy" "ecs-task-role-s3-policy" {
@@ -568,6 +593,14 @@ resource "aws_iam_role_policy" "ecs-task-role-s3-policy" {
           "s3:PutObjectAcl"
         ]
         Resource = "${aws_s3_bucket.uploads_bucket.arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:GenerateDataKey",
+          "kms:Decrypt"
+        ]
+        Resource = aws_kms_key.s3_kms_key.arn
       }
     ]
   })
@@ -578,14 +611,14 @@ resource "aws_secretsmanager_secret" "rds_creds" {
   recovery_window_in_days = 0
 }
 
+# Inject the dynamic password into Secrets Manager safely
 resource "aws_secretsmanager_secret_version" "secret_version" {
-  secret_id     = aws_secretsmanager_secret.rds_creds.id
-  secret_string = <<EOF
-   {
-    "username": "root",
-    "password": "T2kVB3zgeN3YbrKS"
-   }
-EOF
+  secret_id = aws_secretsmanager_secret.rds_creds.id
+  
+  secret_string = jsonencode({
+    username = "root"
+    password = random_password.db_password.result
+  })
 }
 
 

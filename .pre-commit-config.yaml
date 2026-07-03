@@ -1,0 +1,5 @@
+repos:
+  - repo: https://github.com/betterleaks/betterleaks
+    rev: v1.2.0 # Make sure this matches a real tag on their GitHub
+    hooks:
+      - id: betterleaks
