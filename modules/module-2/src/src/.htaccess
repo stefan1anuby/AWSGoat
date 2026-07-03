@@ -5,3 +5,6 @@
 
 # Prevent directory listing
 Options -Indexes
+
+# Tell Apache to use login.php as the default login page
+DirectoryIndex login.php

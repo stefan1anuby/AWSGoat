@@ -480,7 +480,7 @@ resource "aws_lb_listener" "listener" {
   load_balancer_arn = aws_alb.application_load_balancer.id
   port              = "443"
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"  # betterleaks:allow
   # Self Signed Certificate for testing purposes
   certificate_arn   = "arn:aws:acm:eu-central-1:675266034450:certificate/5c706098-18da-4d6d-bc7f-fded41a59a52"
 
@@ -575,7 +575,7 @@ resource "aws_secretsmanager_secret_version" "secret_version" {
     username = "root"
     password = random_password.db_password.result
   })
-end
+}
 
 
 output "ad_Target_URL" {
