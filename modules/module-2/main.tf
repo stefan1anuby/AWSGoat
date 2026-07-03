@@ -37,6 +37,8 @@ resource "aws_vpc" "lab-vpc" {
   tags = {
     Name = "AWS_GOAT_VPC"
   }
+
+  depends_on = [aws_cloudwatch_log_group.vpc_flow_log_group]
 }
 resource "aws_subnet" "lab-subnet-public-1" {
   vpc_id                  = aws_vpc.lab-vpc.id
@@ -142,12 +144,22 @@ resource "aws_db_instance" "database-instance" {
   engine_version         = "8.0"
   username               = "root"
   password               = random_password.db_password.result
-  parameter_group_name   = "default.mysql8.0"
+  #parameter_group_name   = "default.mysql8.0"
   skip_final_snapshot    = true
   availability_zone      = "eu-central-1a"
   db_subnet_group_name   = aws_db_subnet_group.database-subnet-group.name
   vpc_security_group_ids = [aws_security_group.database-security-group.id]
   storage_encrypted      = true
+
+  parameter_group_name            = aws_db_parameter_group.rds_logging_params.name
+  option_group_name               = aws_db_option_group.rds_audit_options.name
+  enabled_cloudwatch_logs_exports = ["audit", "error", "general", "slowquery"]
+
+  depends_on = [
+    aws_cloudwatch_log_group.rds_audit_logs,
+    aws_cloudwatch_log_group.rds_error_logs,
+    aws_cloudwatch_log_group.rds_general_logs
+  ]
 }
 
 
@@ -348,7 +360,7 @@ data "aws_ami" "ecs_optimized_ami" {
 
   filter {
     name   = "name"
-    values = ["amzn2-ami-ecs-hvm-2.0.202*-x86_64-ebs"]
+    values = ["al2023-ami-ecs-hvm-202*-x86_64"]
   }
 }
 
@@ -450,6 +462,38 @@ resource "aws_ecs_service" "worker" {
   depends_on = [aws_lb_listener.listener]
 }
 
+data "aws_elb_service_account" "main" {}
+
+# Create the S3 Bucket for the ALB Logs
+resource "aws_s3_bucket" "alb_logs_bucket" {
+  bucket        = "aws-goat-alb-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true # Useful for lab environments so Terraform can easily destroy it
+
+  tags = {
+    Name = "aws-goat-alb-logs"
+  }
+}
+
+# Create the Bucket Policy allowing the ELB service to write to it
+resource "aws_s3_bucket_policy" "alb_logs_bucket_policy" {
+  bucket = aws_s3_bucket.alb_logs_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = data.aws_elb_service_account.main.arn
+        }
+        Action   = "s3:PutObject"
+        # Notice the structure here: it must match the prefix you set in the ALB block below
+        Resource = "${aws_s3_bucket.alb_logs_bucket.arn}/alb-logs/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+      }
+    ]
+  })
+}
+
 # trivy:ignore:AVD-AWS-0053
 resource "aws_alb" "application_load_balancer" {
   name                       = "aws-goat-m2-alb"
@@ -458,6 +502,14 @@ resource "aws_alb" "application_load_balancer" {
   subnets                    = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
   security_groups            = [aws_security_group.load_balancer_security_group.id]
   drop_invalid_header_fields = true
+
+  # The configuration to activate logging
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs_bucket.id
+    prefix  = "alb-logs"
+    enabled = true
+  }
+  depends_on = [aws_s3_bucket_policy.alb_logs_bucket_policy]
 
   tags = {
     Name = "aws-goat-m2-alb"
@@ -699,4 +751,815 @@ resource "aws_vpc_endpoint" "logs" {
   subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
   security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
   private_dns_enabled = true
+}
+
+# SSM Core Endpoint (Agent registration and document retrieval)
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# SSM Messages Endpoint (Required for Run Command and SSM Agent communication)
+resource "aws_vpc_endpoint" "ssmmessages" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ssmmessages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+# EC2 Messages Endpoint (Required for Session Manager / Interactive Shell access)
+resource "aws_vpc_endpoint" "ec2messages" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+# GuardDuty Data Endpoint (Required for Runtime Monitoring automated agent)
+resource "aws_vpc_endpoint" "guardduty_data" {
+  vpc_id              = aws_vpc.lab-vpc.id
+  service_name        = "com.amazonaws.eu-central-1.guardduty-data"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.lab-subnet-public-1.id, aws_subnet.lab-subnet-public-1b.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints_sg.id]
+  private_dns_enabled = true
+}
+
+resource "aws_s3_bucket" "cloudtrail_bucket" {
+  bucket        = "aws-goat-cloudtrail-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_policy" "cloudtrail_bucket_policy" {
+  bucket = aws_s3_bucket.cloudtrail_bucket.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSCloudTrailAclCheck"
+        Effect = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.cloudtrail_bucket.arn
+      },
+      {
+        Sid    = "AWSCloudTrailWrite"
+        Effect = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.cloudtrail_bucket.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudwatch_log_group" "cloudtrail_log_group" {
+  name              = "/aws/cloudtrail/main-trail"
+  retention_in_days = 90 # Adjust based on your compliance needs
+}
+
+resource "aws_iam_role" "cloudtrail_cw_role" {
+  name = "CloudTrail-CloudWatch-Role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "cloudtrail_cw_policy" {
+  name = "CloudTrail-CloudWatch-Policy"
+  role = aws_iam_role.cloudtrail_cw_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Effect   = "Allow"
+        # Notice the :* at the end. CloudTrail requires this format to create streams.
+        Resource = "${aws_cloudwatch_log_group.cloudtrail_log_group.arn}:*" 
+      }
+    ]
+  })
+}
+
+resource "aws_cloudtrail" "main_trail" {
+  name                          = "aws-goat-main-trail"
+  s3_bucket_name                = aws_s3_bucket.cloudtrail_bucket.id
+  include_global_service_events = true
+  is_multi_region_trail         = true
+  enable_log_file_validation    = true
+
+  # CloudWatch Integration
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.cloudtrail_log_group.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail_cw_role.arn
+
+  # CRITICAL: Wait for the bucket policy to be attached before creating the trail
+  depends_on = [aws_s3_bucket_policy.cloudtrail_bucket_policy]
+}
+
+# Create the S3 bucket for VPC Flow Logs
+resource "aws_s3_bucket" "vpc_flow_logs_bucket" {
+  bucket        = "aws-goat-vpc-flow-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+
+  tags = {
+    Name = "aws-goat-vpc-flow-logs"
+  }
+}
+
+# Attach the Flow Log to the VPC and point it to S3
+resource "aws_flow_log" "vpc_flow_log_s3" {
+  log_destination      = aws_s3_bucket.vpc_flow_logs_bucket.arn
+  log_destination_type = "s3"
+  traffic_type         = "ALL"
+  vpc_id               = aws_vpc.lab-vpc.id
+
+  tags = {
+    Name = "VPC-Flow-Logs-S3"
+  }
+}
+
+# Create the CloudWatch Log Group
+resource "aws_cloudwatch_log_group" "vpc_flow_log_group" {
+  name              = "/aws/vpc/flow-logs"
+  retention_in_days = 7 # Adjust based on your needs
+}
+
+# Create the IAM Role for VPC Flow Logs
+resource "aws_iam_role" "vpc_flow_log_role" {
+  name = "vpc-flow-log-cw-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "vpc-flow-logs.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Grant the role permission to write to CloudWatch
+resource "aws_iam_role_policy" "vpc_flow_log_policy" {
+  name = "vpc-flow-log-cw-policy"
+  role = aws_iam_role.vpc_flow_log_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Attach the second Flow Log to the VPC and point it to CloudWatch
+resource "aws_flow_log" "vpc_flow_log_cw" {
+  iam_role_arn    = aws_iam_role.vpc_flow_log_role.arn
+  log_destination = aws_cloudwatch_log_group.vpc_flow_log_group.arn
+  traffic_type    = "ALL"
+  vpc_id          = aws_vpc.lab-vpc.id
+
+  tags = {
+    Name = "VPC-Flow-Logs-CloudWatch"
+  }
+}
+
+# Create an Option Group to enable the Audit Plugin
+resource "aws_db_option_group" "rds_audit_options" {
+  name                 = "aws-goat-audit-options"
+  engine_name          = "mysql"
+  major_engine_version = "8.0"
+  option_group_description = "Enable Audit logging for MySQL 8.0"
+
+  option {
+    option_name = "MARIADB_AUDIT_PLUGIN"
+    option_settings {
+      name  = "SERVER_AUDIT_EVENTS"
+      value = "CONNECT,QUERY" # Logs logins and queries
+    }
+  }
+}
+
+# Create a Parameter Group to enable General and Slow Query logs
+resource "aws_db_parameter_group" "rds_logging_params" {
+  name   = "aws-goat-db-parameters"
+  family = "mysql8.0"
+  description = "Enable General and Slow Query logging"
+
+  parameter {
+    name  = "general_log"
+    value = "1"
+  }
+  
+  parameter {
+    name  = "slow_query_log"
+    value = "1"
+  }
+  
+  parameter {
+    name  = "long_query_time"
+    value = "2" # Logs any query taking longer than 2 seconds
+  }
+}
+
+# Explicitly create the log groups to control retention
+resource "aws_cloudwatch_log_group" "rds_audit_logs" {
+  name              = "/aws/rds/instance/aws-goat-db/audit"
+  retention_in_days = 7
+}
+
+resource "aws_cloudwatch_log_group" "rds_error_logs" {
+  name              = "/aws/rds/instance/aws-goat-db/error"
+  retention_in_days = 7
+}
+
+resource "aws_cloudwatch_log_group" "rds_general_logs" {
+  name              = "/aws/rds/instance/aws-goat-db/general"
+  retention_in_days = 7
+}
+
+# The S3 Bucket for Long-term RDS Log Storage
+resource "aws_s3_bucket" "rds_logs_bucket" {
+  bucket        = "aws-goat-rds-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+# IAM Role for Firehose to write to S3
+resource "aws_iam_role" "rds_firehose_role" {
+  name = "rds-firehose-to-s3-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "firehose.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "rds_firehose_policy" {
+  name   = "rds-firehose-s3-policy"
+  role   = aws_iam_role.rds_firehose_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action   = ["s3:AbortMultipartUpload", "s3:GetBucketLocation", "s3:GetObject", "s3:ListBucket", "s3:ListBucketMultipartUploads", "s3:PutObject"]
+      Effect   = "Allow"
+      Resource = [aws_s3_bucket.rds_logs_bucket.arn, "${aws_s3_bucket.rds_logs_bucket.arn}/*"]
+    }]
+  })
+}
+
+# Create the Kinesis Firehose Stream
+resource "aws_kinesis_firehose_delivery_stream" "rds_to_s3_stream" {
+  name        = "rds-logs-to-s3"
+  destination = "extended_s3"
+
+  extended_s3_configuration {
+    role_arn   = aws_iam_role.rds_firehose_role.arn
+    bucket_arn = aws_s3_bucket.rds_logs_bucket.arn
+    prefix     = "mysql-logs/"
+  }
+}
+
+# IAM Role allowing CloudWatch to send data to Firehose
+resource "aws_iam_role" "rds_cwl_to_firehose_role" {
+  name = "rds-cwl-to-firehose-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "logs.eu-central-1.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "rds_cwl_to_firehose_policy" {
+  name   = "rds-cwl-to-firehose-policy"
+  role   = aws_iam_role.rds_cwl_to_firehose_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action   = ["firehose:PutRecord", "firehose:PutRecordBatch"]
+      Effect   = "Allow"
+      Resource = aws_kinesis_firehose_delivery_stream.rds_to_s3_stream.arn
+    }]
+  })
+}
+
+# Connect the RDS CloudWatch Audit Logs to the Firehose Stream
+resource "aws_cloudwatch_log_subscription_filter" "rds_audit_filter" {
+  name            = "rds-audit-to-s3"
+  role_arn        = aws_iam_role.rds_cwl_to_firehose_role.arn
+  log_group_name  = aws_cloudwatch_log_group.rds_audit_logs.name
+  filter_pattern  = "" # Captures everything
+  destination_arn = aws_kinesis_firehose_delivery_stream.rds_to_s3_stream.arn
+}
+
+
+resource "aws_s3_bucket" "trail_uploads_bucket" {
+  bucket        = "aws-goat-uploads-trail-storage-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_policy" "trail_uploads_bucket_policy" {
+  bucket = aws_s3_bucket.trail_uploads_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSCloudTrailAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.trail_uploads_bucket.arn
+      },
+      {
+        Sid    = "AWSCloudTrailWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.trail_uploads_bucket.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudwatch_log_group" "dedicated_trail_log_group" {
+  name              = "/aws/cloudtrail/uploads-bucket-data-events"
+  retention_in_days = 7
+}
+
+resource "aws_iam_role" "dedicated_trail_cw_role" {
+  name = "aws-goat-uploads-trail-cw-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "cloudtrail.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "dedicated_trail_cw_policy" {
+  name = "aws-goat-uploads-trail-cw-policy"
+  role = aws_iam_role.dedicated_trail_cw_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Effect   = "Allow"
+        Resource = "${aws_cloudwatch_log_group.dedicated_trail_log_group.arn}:*"
+      }
+    ]
+  })
+}
+
+resource "aws_cloudtrail" "uploads_data_trail" {
+  name                          = "aws-goat-uploads-data-trail"
+  s3_bucket_name                = aws_s3_bucket.trail_uploads_bucket.id
+  include_global_service_events = false # Disabled to avoid duplicating management events
+  is_multi_region_trail         = false # Can keep false if your bucket resides in only one region
+  enable_log_file_validation    = true
+
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.dedicated_trail_log_group.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.dedicated_trail_cw_role.arn
+
+  # This selector intercepts ONLY S3 data actions on your specific bucket
+  advanced_event_selector {
+    name = "Log data events for the uploads bucket exclusively"
+
+    field_selector {
+      field  = "eventCategory"
+      equals = ["Data"]
+    }
+
+    field_selector {
+      field  = "resources.type"
+      equals = ["AWS::S3::Object"]
+    }
+
+    field_selector {
+      field       = "resources.ARN"
+      # Points directly to the bucket contents. 
+      # (Ensure aws_s3_bucket.uploads_bucket matches your exact local Terraform resource name)
+      starts_with = ["${aws_s3_bucket.uploads_bucket.arn}/"] 
+    }
+  }
+
+  # Ensure permissions are locked in before the trail attempts verification
+  depends_on = [aws_s3_bucket_policy.trail_uploads_bucket_policy]
+}
+
+resource "aws_s3_bucket" "container_logs_bucket" {
+  bucket        = "aws-goat-container-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+# IAM Role allowing Firehose to write data into the new S3 bucket
+resource "aws_iam_role" "firehose_container_role" {
+  name = "aws-goat-firehose-container-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "firehose.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "firehose_container_s3_policy" {
+  name = "firehose-container-s3-policy"
+  role = aws_iam_role.firehose_container_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:AbortMultipartUpload",
+        "s3:GetBucketLocation",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:ListBucketMultipartUploads",
+        "s3:PutObject"
+      ]
+      Resource = [
+        aws_s3_bucket.container_logs_bucket.arn,
+        "${aws_s3_bucket.container_logs_bucket.arn}/*"
+      ]
+    }]
+  })
+}
+
+# The Firehose Delivery Stream using the AWS v5+ provider syntax
+resource "aws_kinesis_firehose_delivery_stream" "container_to_s3_stream" {
+  name        = "container-logs-to-s3"
+  destination = "extended_s3"
+
+  extended_s3_configuration {
+    role_arn   = aws_iam_role.firehose_container_role.arn
+    bucket_arn = aws_s3_bucket.container_logs_bucket.arn
+    prefix     = "ecs-app-logs/"
+  }
+}
+
+resource "aws_iam_role" "cwl_to_firehose_container_role" {
+  name = "aws-goat-cwl-to-firehose-container-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "logs.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "cwl_to_firehose_container_policy" {
+  name = "cwl-to-firehose-container-policy"
+  role = aws_iam_role.cwl_to_firehose_container_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["firehose:PutRecord", "firehose:PutRecordBatch"]
+      Resource = aws_kinesis_firehose_delivery_stream.container_to_s3_stream.arn
+    }]
+  })
+}
+
+resource "aws_cloudwatch_log_subscription_filter" "ecs_logs_to_s3" {
+  name            = "ecs-container-logs-to-s3-filter"
+  role_arn        = aws_iam_role.cwl_to_firehose_container_role.arn
+  log_group_name  = aws_cloudwatch_log_group.ecs_log_group.name # Points to your container log group
+  filter_pattern  = "" # Blank means capture every single line (errors, status codes, crashes)
+  destination_arn = aws_kinesis_firehose_delivery_stream.container_to_s3_stream.arn
+}
+
+# Athena requires a bucket to store the CSV results of your queries
+resource "aws_s3_bucket" "athena_query_results" {
+  bucket        = "aws-goat-athena-results-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+# Create an Athena Database (logical grouping for your tables)
+resource "aws_athena_database" "lab_logs_db" {
+  name   = "aws_goat_logs_db"
+  bucket = aws_s3_bucket.athena_query_results.bucket
+}
+
+# Create an Athena Workgroup
+resource "aws_athena_workgroup" "lab_workgroup" {
+  name = "aws-goat-workgroup"
+
+  configuration {
+    result_configuration {
+      output_location = "s3://${aws_s3_bucket.athena_query_results.bucket}/output/"
+    }
+  }
+  force_destroy = true
+}
+
+# 1. Enable the Core GuardDuty Detector
+resource "aws_guardduty_detector" "main" {
+  enable                       = true
+  finding_publishing_frequency = "FIFTEEN_MINUTES"
+
+  tags = {
+    Environment = "Production"
+    ManagedBy   = "Terraform"
+  }
+}
+
+# 2. S3 Protection (Monitors S3 data access events)
+resource "aws_guardduty_detector_feature" "s3_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+# 3. RDS Protection (Monitors Aurora/RDS login anomalies)
+resource "aws_guardduty_detector_feature" "rds_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "RDS_LOGIN_EVENTS"
+  status      = "ENABLED"
+}
+
+# 4. Runtime Monitoring (Covers EC2, ECS, and EKS operating systems)
+resource "aws_guardduty_detector_feature" "runtime_monitoring" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "RUNTIME_MONITORING"
+  status      = "ENABLED"
+
+  # Automatically manage the GuardDuty agent on EC2 instances via SSM
+  additional_configuration {
+    name   = "EC2_AGENT_MANAGEMENT"
+    status = "ENABLED"
+  }
+}
+
+# 1. Create the WAF Web ACL
+resource "aws_wafv2_web_acl" "alb_waf" {
+  name        = "aws-goat-m2-waf"
+  description = "WAF for aws-goat-m2-alb"
+  
+  # ALBs require the REGIONAL scope
+  scope       = "REGIONAL" 
+
+  # Default action if no rules match
+  default_action {
+    allow {} 
+  }
+
+  # Example Rule: Block common exploits using AWS Managed Rules
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "AWSManagedRulesCommonRuleSetMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+  rule {
+    name     = "BlockSQLInjection"
+    priority = 3 
+
+    override_action {
+      none {} # Leave as none so the rule's native 'Block' action takes effect
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesSQLiRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "BlockSQLInjectionMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "RestrictLoginRateLimit"
+    priority = 2 # Ensure priority doesn't conflict with other rules
+
+    action {
+      block {} # Block the IP if threshold is crossed
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = 100 # Minimum allowed by AWS WAF is 100
+        aggregate_key_type = "IP"
+
+        # This restricts the rate-limiting ONLY to the /login path
+        scope_down_statement {
+          byte_match_statement {
+            field_to_match {
+              uri_path {}
+            }
+            positional_constraint = "EXACTLY"
+            search_string         = "/login"
+            
+            # Standard text transformations to prevent bypasses via case sensitivity
+            text_transformation {
+              priority = 0
+              type     = "LOWERCASE"
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "RestrictLoginRateLimitMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Visibility config for the overall WAF
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "aws-goat-m2-waf-metric"
+    sampled_requests_enabled   = true
+  }
+
+  tags = {
+    Name = "aws-goat-m2-waf"
+  }
+}
+
+# 2. Attach the WAF to your specific ALB
+resource "aws_wafv2_web_acl_association" "waf_alb_assoc" {
+  # References the ARN of the ALB you provided
+  resource_arn = aws_alb.application_load_balancer.arn 
+  
+  # References the ARN of the WAF created above
+  web_acl_arn  = aws_wafv2_web_acl.alb_waf.arn
+}
+
+resource "aws_sns_topic" "security_alerts" {
+  name = "security-incident-alerts"
+}
+
+# Example email subscription (You will need to confirm this via email)
+resource "aws_sns_topic_subscription" "security_team_email" {
+  topic_arn = aws_sns_topic.security_alerts.arn
+  protocol  = "email"
+  # endpoint  = "security@yourdomain.com"
+  endpoint  = "stefaneduard2002@gmail.com"
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_5xx_alarm" {
+  alarm_name          = "Critical-ALB-5XX-Spike"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "HTTPCode_ELB_5XX_Count"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60 # 1-minute window
+  statistic           = "Sum"
+  threshold           = 5 # Alert if more than 20 errors occur in 1 minute
+  alarm_description   = "High volume of 5XX errors detected. Possible DoS or application crash."
+  alarm_actions       = [aws_sns_topic.security_alerts.arn]
+
+  # You must specify WHICH load balancer to monitor using its ARN suffix
+  dimensions = {
+    LoadBalancer = aws_alb.application_load_balancer.arn_suffix
+  }
+}
+
+# 1. Create the Metric Filter for OS Commands
+resource "aws_cloudwatch_log_metric_filter" "ecs_os_commands" {
+  name           = "ECS-OS-Command-Filter"
+  # Looks for exact string matches of common malicious commands in the stdout/stderr
+  pattern        = "?\"/bin/bash\" ?\"/bin/sh\" ?\"wget \" ?\"curl \" ?\"cat /etc/\" ?\"nc -\""
+  log_group_name = "/ecs/ECS-Lab-Task-definition" # Replace with your ECS log group
+
+  metric_transformation {
+    name      = "SuspiciousOSCommandCount"
+    namespace = "CustomSecurityMetrics"
+    value     = "1"
+  }
+}
+
+# 2. Trigger the Alarm (Immediate response)
+resource "aws_cloudwatch_metric_alarm" "ecs_os_command_alarm" {
+  alarm_name          = "Critical-ECS-Unauthorized-OS-Command"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = aws_cloudwatch_log_metric_filter.ecs_os_commands.metric_transformation[0].name
+  namespace           = aws_cloudwatch_log_metric_filter.ecs_os_commands.metric_transformation[0].namespace
+  period              = 60 
+  statistic           = "Sum"
+  threshold           = 1 # Alert immediately on a SINGLE occurrence
+  alarm_description   = "Unexpected OS command execution detected in ECS container. Probable initial compromise."
+  alarm_actions       = [aws_sns_topic.security_alerts.arn]
+}
+
+# 1. Create the Metric Filter for text-based Access Logs
+resource "aws_cloudwatch_log_metric_filter" "admin_bulk_changes" {
+  name           = "Admin-Bulk-Change-Filter"
+  log_group_name = aws_cloudwatch_log_group.ecs_log_group.name
+
+  # This pattern matches standard Nginx/Apache log spacing.
+  # It looks for the exact POST request and a successful 200 status code.
+  pattern        = "[ip, id, user, timestamp, request=\"POST /superadmin/updateuser.php*\", status_code=\"200\", size, ...]"
+
+  metric_transformation {
+    name      = "AdminUpdateSuccessCount"
+    namespace = "CustomSecurityMetrics"
+    value     = "1"
+  }
+}
+
+# 2. Trigger the Alarm (5-minute sliding window)
+resource "aws_cloudwatch_metric_alarm" "admin_bulk_change_alarm" {
+  alarm_name          = "Warning-Admin-Bulk-Modification"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = aws_cloudwatch_log_metric_filter.admin_bulk_changes.metric_transformation[0].name
+  namespace           = aws_cloudwatch_log_metric_filter.admin_bulk_changes.metric_transformation[0].namespace
+  period              = 300 # 5-minute window
+  statistic           = "Sum"
+  threshold           = 15  # Alert if more than 15 successful changes occur in 5 minutes
+
+  alarm_description   = "High velocity of admin modifications detected. Verify if this is a planned maintenance task or a compromised credential."
+  alarm_actions       = [aws_sns_topic.security_alerts.arn]
 }

@@ -1,0 +1,408 @@
+
+Report Summary
+
+┌─────────┬───────────┬───────────────────┐
+│ Target  │   Type    │ Misconfigurations │
+├─────────┼───────────┼───────────────────┤
+│ .       │ terraform │         0         │
+├─────────┼───────────┼───────────────────┤
+│ main.tf │ terraform │        18         │
+└─────────┴───────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+main.tf (terraform)
+===================
+Tests: 18 (SUCCESSES: 0, FAILURES: 18)
+Failures: 18 (UNKNOWN: 0, LOW: 12, MEDIUM: 6, HIGH: 0, CRITICAL: 0)
+
+AWS-0017 (LOW): Log group is not encrypted.
+════════════════════════════════════════
+CloudWatch log groups are encrypted by default, however, to get the full benefit of controlling key rotation and other KMS aspects a KMS CMK should be used.
+
+
+See https://avd.aquasec.com/misconfig/aws-0017
+────────────────────────────────────────
+ main.tf:392-395
+────────────────────────────────────────
+ 392 ┌ resource "aws_cloudwatch_log_group" "ecs_log_group" {
+ 393 │   name              = "/ecs/ECS-Lab-Task-definition"
+ 394 │   retention_in_days = 7 # Automatically deletes logs after a week to save money
+ 395 └ }
+────────────────────────────────────────
+
+
+AWS-0034 (LOW): Cluster does not have container insights enabled.
+════════════════════════════════════════
+Cloudwatch Container Insights provide more metrics and logs for container based applications and micro services.
+
+
+See https://avd.aquasec.com/misconfig/aws-0034
+────────────────────────────────────────
+ main.tf:380-386
+────────────────────────────────────────
+ 380 ┌ resource "aws_ecs_cluster" "cluster" {
+ 381 │   name = "ecs-lab-cluster"
+ 382 │ 
+ 383 │   tags = {
+ 384 │     name = "ecs-cluster-name"
+ 385 │   }
+ 386 └ }
+────────────────────────────────────────
+
+
+AWS-0077 (MEDIUM): Instance has very low backup retention period.
+════════════════════════════════════════
+RDS backup retention for clusters defaults to 1 day, this may not be enough to identify and respond to an issue. Backup retention periods should be set to a period that is a balance on cost and limiting risk.
+
+
+See https://avd.aquasec.com/misconfig/aws-0077
+────────────────────────────────────────
+ main.tf:130-144
+────────────────────────────────────────
+ 130 ┌ resource "aws_db_instance" "database-instance" {
+ 131 │   identifier             = "aws-goat-db"
+ 132 │   allocated_storage      = 10
+ 133 │   instance_class         = "db.t3.micro"
+ 134 │   engine                 = "mysql"
+ 135 │   engine_version         = "8.0"
+ 136 │   username               = "root"
+ 137 │   password               = "T2kVB3zgeN3YbrKS"
+ 138 └   parameter_group_name   = "default.mysql8.0"
+ ...   
+────────────────────────────────────────
+
+
+AWS-0089 (LOW): Bucket has logging disabled
+════════════════════════════════════════
+Ensures S3 bucket logging is enabled for S3 buckets
+
+See https://avd.aquasec.com/misconfig/aws-0089
+────────────────────────────────────────
+ main.tf:486-493
+────────────────────────────────────────
+ 486 ┌ resource "aws_s3_bucket" "uploads_bucket" {
+ 487 │   bucket        = "aws-goat-m2-uploads-${data.aws_caller_identity.current.account_id}"
+ 488 │   force_destroy = true
+ 489 │ 
+ 490 │   tags = {
+ 491 │     Name = "aws-goat-m2-uploads"
+ 492 │   }
+ 493 └ }
+────────────────────────────────────────
+
+
+AWS-0090 (MEDIUM): Bucket does not have versioning enabled
+════════════════════════════════════════
+Versioning in Amazon S3 is a means of keeping multiple variants of an object in the same bucket.
+
+You can use the S3 Versioning feature to preserve, retrieve, and restore every version of every object stored in your buckets.
+
+With versioning you can recover more easily from both unintended user actions and application failures.
+
+When you enable versioning, also keep in mind the potential costs of storing noncurrent versions of objects. To help manage those costs, consider setting up an S3 Lifecycle configuration.
+
+
+See https://avd.aquasec.com/misconfig/aws-0090
+────────────────────────────────────────
+ main.tf:486-493
+────────────────────────────────────────
+ 486 ┌ resource "aws_s3_bucket" "uploads_bucket" {
+ 487 │   bucket        = "aws-goat-m2-uploads-${data.aws_caller_identity.current.account_id}"
+ 488 │   force_destroy = true
+ 489 │ 
+ 490 │   tags = {
+ 491 │     Name = "aws-goat-m2-uploads"
+ 492 │   }
+ 493 └ }
+────────────────────────────────────────
+
+
+AWS-0098 (LOW): Secret explicitly uses the default key.
+════════════════════════════════════════
+Secrets Manager encrypts secrets by default using a default key created by AWS. To ensure control and granularity of secret encryption, CMK's should be used explicitly.
+
+
+See https://avd.aquasec.com/misconfig/aws-0098
+────────────────────────────────────────
+ main.tf:557-560
+────────────────────────────────────────
+ 557 ┌ resource "aws_secretsmanager_secret" "rds_creds" {
+ 558 │   name                    = "RDS_CREDS"
+ 559 │   recovery_window_in_days = 0
+ 560 └ }
+────────────────────────────────────────
+
+
+AWS-0124 (LOW): Security group rule does not have a description.
+════════════════════════════════════════
+Security group rules should include a description for auditing purposes.
+
+Simplifies auditing, debugging, and managing security groups.
+
+
+See https://avd.aquasec.com/misconfig/aws-0124
+────────────────────────────────────────
+ main.tf:85-90
+   via main.tf:80-92 (aws_security_group.ecs_sg)
+────────────────────────────────────────
+  80   resource "aws_security_group" "ecs_sg" {
+  81     name        = "ECS-SG"
+  82     description = "SG for cluster created from terraform"
+  83     vpc_id      = aws_vpc.lab-vpc.id
+  84   
+  85 ┌   ingress {
+  86 │     from_port       = 0
+  87 │     to_port         = 65535
+  88 └     protocol        = "tcp"
+  ..   
+────────────────────────────────────────
+
+
+AWS-0124 (LOW): Security group rule does not have a description.
+════════════════════════════════════════
+Security group rules should include a description for auditing purposes.
+
+Simplifies auditing, debugging, and managing security groups.
+
+
+See https://avd.aquasec.com/misconfig/aws-0124
+────────────────────────────────────────
+ main.tf:153-158
+   via main.tf:148-163 (aws_security_group.load_balancer_security_group)
+────────────────────────────────────────
+ 148   resource "aws_security_group" "load_balancer_security_group" {
+ 149     name        = "Load-Balancer-SG"
+ 150     description = "SG for load balancer created from terraform"
+ 151     vpc_id      = aws_vpc.lab-vpc.id
+ 152   
+ 153 ┌   ingress {
+ 154 │     from_port   = 443
+ 155 │     to_port     = 443
+ 156 └     protocol    = "tcp"
+ ...   
+────────────────────────────────────────
+
+
+AWS-0124 (LOW): Security group rule does not have a description.
+════════════════════════════════════════
+Security group rules should include a description for auditing purposes.
+
+Simplifies auditing, debugging, and managing security groups.
+
+
+See https://avd.aquasec.com/misconfig/aws-0124
+────────────────────────────────────────
+ main.tf:602-607
+   via main.tf:597-608 (aws_security_group.vpc_endpoints_sg)
+────────────────────────────────────────
+ 597   resource "aws_security_group" "vpc_endpoints_sg" {
+ 598     name        = "vpc-endpoints-sg"
+ 599     description = "Security group for VPC Endpoints"
+ 600     vpc_id      = aws_vpc.lab-vpc.id
+ 601   
+ 602 ┌   ingress {
+ 603 │     from_port       = 443
+ 604 │     to_port         = 443
+ 605 └     protocol        = "tcp"
+ ...   
+────────────────────────────────────────
+
+
+AWS-0124 (LOW): Security group rule does not have a description.
+════════════════════════════════════════
+Security group rules should include a description for auditing purposes.
+
+Simplifies auditing, debugging, and managing security groups.
+
+
+See https://avd.aquasec.com/misconfig/aws-0124
+────────────────────────────────────────
+ main.tf:587-594
+────────────────────────────────────────
+ 587 ┌ resource "aws_security_group_rule" "alb_to_ecs_egress" {
+ 588 │   type                     = "egress"
+ 589 │   from_port                = 0
+ 590 │   to_port                  = 65535
+ 591 │   protocol                 = "tcp"
+ 592 │   security_group_id        = aws_security_group.load_balancer_security_group.id
+ 593 │   source_security_group_id = aws_security_group.ecs_sg.id
+ 594 └ }
+────────────────────────────────────────
+
+
+AWS-0124 (LOW): Security group rule does not have a description.
+════════════════════════════════════════
+Security group rules should include a description for auditing purposes.
+
+Simplifies auditing, debugging, and managing security groups.
+
+
+See https://avd.aquasec.com/misconfig/aws-0124
+────────────────────────────────────────
+ main.tf:578-585
+────────────────────────────────────────
+ 578 ┌ resource "aws_security_group_rule" "ecs_to_db_egress" {
+ 579 │   type                     = "egress"
+ 580 │   from_port                = 3306
+ 581 │   to_port                  = 3306
+ 582 │   protocol                 = "tcp"
+ 583 │   security_group_id        = aws_security_group.ecs_sg.id
+ 584 │   source_security_group_id = aws_security_group.database-security-group.id
+ 585 └ }
+────────────────────────────────────────
+
+
+AWS-0124 (LOW): Security group rule does not have a description.
+════════════════════════════════════════
+Security group rules should include a description for auditing purposes.
+
+Simplifies auditing, debugging, and managing security groups.
+
+
+See https://avd.aquasec.com/misconfig/aws-0124
+────────────────────────────────────────
+ main.tf:610-617
+────────────────────────────────────────
+ 610 ┌ resource "aws_security_group_rule" "ecs_to_endpoints_egress" {
+ 611 │   type                     = "egress"
+ 612 │   from_port                = 443
+ 613 │   to_port                  = 443
+ 614 │   protocol                 = "tcp"
+ 615 │   security_group_id        = aws_security_group.ecs_sg.id
+ 616 │   source_security_group_id = aws_security_group.vpc_endpoints_sg.id
+ 617 └ }
+────────────────────────────────────────
+
+
+AWS-0124 (LOW): Security group rule does not have a description.
+════════════════════════════════════════
+Security group rules should include a description for auditing purposes.
+
+Simplifies auditing, debugging, and managing security groups.
+
+
+See https://avd.aquasec.com/misconfig/aws-0124
+────────────────────────────────────────
+ main.tf:627-634
+────────────────────────────────────────
+ 627 ┌ resource "aws_security_group_rule" "ecs_to_s3_gateway_egress" {
+ 628 │   type              = "egress"
+ 629 │   from_port         = 443
+ 630 │   to_port           = 443
+ 631 │   protocol          = "tcp"
+ 632 │   security_group_id = aws_security_group.ecs_sg.id
+ 633 │   prefix_list_ids   = [aws_vpc_endpoint.s3.prefix_list_id]
+ 634 └ }
+────────────────────────────────────────
+
+
+AWS-0133 (LOW): Instance does not have performance insights enabled.
+════════════════════════════════════════
+Enabling Performance insights allows for greater depth in monitoring data.
+For example, information about active sessions could help diagose a compromise or assist in the investigation
+
+
+See https://avd.aquasec.com/misconfig/aws-0133
+────────────────────────────────────────
+ main.tf:130-144
+────────────────────────────────────────
+ 130 ┌ resource "aws_db_instance" "database-instance" {
+ 131 │   identifier             = "aws-goat-db"
+ 132 │   allocated_storage      = 10
+ 133 │   instance_class         = "db.t3.micro"
+ 134 │   engine                 = "mysql"
+ 135 │   engine_version         = "8.0"
+ 136 │   username               = "root"
+ 137 │   password               = "T2kVB3zgeN3YbrKS"
+ 138 └   parameter_group_name   = "default.mysql8.0"
+ ...   
+────────────────────────────────────────
+
+
+AWS-0176 (MEDIUM): Instance does not have IAM Authentication enabled
+════════════════════════════════════════
+Ensure IAM Database Authentication is enabled for RDS database instances to manage database access
+
+See https://avd.aquasec.com/misconfig/aws-0176
+────────────────────────────────────────
+ main.tf:130-144
+────────────────────────────────────────
+ 130 ┌ resource "aws_db_instance" "database-instance" {
+ 131 │   identifier             = "aws-goat-db"
+ 132 │   allocated_storage      = 10
+ 133 │   instance_class         = "db.t3.micro"
+ 134 │   engine                 = "mysql"
+ 135 │   engine_version         = "8.0"
+ 136 │   username               = "root"
+ 137 │   password               = "T2kVB3zgeN3YbrKS"
+ 138 └   parameter_group_name   = "default.mysql8.0"
+ ...   
+────────────────────────────────────────
+
+
+AWS-0177 (MEDIUM): Instance does not have Deletion Protection enabled
+════════════════════════════════════════
+Ensure deletion protection is enabled for RDS database instances.
+
+See https://avd.aquasec.com/misconfig/aws-0177
+────────────────────────────────────────
+ main.tf:130-144
+────────────────────────────────────────
+ 130 ┌ resource "aws_db_instance" "database-instance" {
+ 131 │   identifier             = "aws-goat-db"
+ 132 │   allocated_storage      = 10
+ 133 │   instance_class         = "db.t3.micro"
+ 134 │   engine                 = "mysql"
+ 135 │   engine_version         = "8.0"
+ 136 │   username               = "root"
+ 137 │   password               = "T2kVB3zgeN3YbrKS"
+ 138 └   parameter_group_name   = "default.mysql8.0"
+ ...   
+────────────────────────────────────────
+
+
+AWS-0178 (MEDIUM): VPC does not have VPC Flow Logs enabled.
+════════════════════════════════════════
+VPC Flow Logs provide visibility into network traffic that traverses the VPC and can be used to detect anomalous traffic or insight during security workflows.
+
+
+See https://avd.aquasec.com/misconfig/aws-0178
+────────────────────────────────────────
+ main.tf:33-40
+────────────────────────────────────────
+  33 ┌ resource "aws_vpc" "lab-vpc" {
+  34 │   cidr_block           = "10.0.0.0/16"
+  35 │   enable_dns_support   = true
+  36 │   enable_dns_hostnames = true
+  37 │   tags = {
+  38 │     Name = "AWS_GOAT_VPC"
+  39 │   }
+  40 └ }
+────────────────────────────────────────
+
+
+AWS-0342 (MEDIUM): IAM policy allows 'iam:PassRole' action
+════════════════════════════════════════
+Ensures any IAM pass role attached to roles are flagged and warned.
+
+See https://avd.aquasec.com/misconfig/aws-0342
+────────────────────────────────────────
+ main.tf:228-251
+   via main.tf:226-252 (aws_iam_policy.instance_boundary_policy)
+────────────────────────────────────────
+ 226   resource "aws_iam_policy" "instance_boundary_policy" {
+ 227     name = "aws-goat-instance-boundary-policy"
+ 228 ┌   policy = jsonencode({
+ 229 │     "Statement" : [
+ 230 │       {
+ 231 │         "Action" : [
+ 232 │           "iam:List*",
+ 233 │           "iam:Get*",
+ 234 └           "iam:PassRole",
+ ...   
+────────────────────────────────────────
+
+
