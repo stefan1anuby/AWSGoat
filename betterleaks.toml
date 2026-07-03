@@ -1,0 +1,17 @@
+# betterleaks.toml
+
+# This instructs Betterleaks to load the built-in default rules first
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global exclusions for known mock secrets"
+regexes = [
+    '''T2kVB3zgeN3YbrKS'''
+]
+
+[[rules]]
+id = "catch-all-high-entropy"
+description = "Super sensitive high-entropy catch-all rule"
+regex = '''['"|:= ]([a-zA-Z0-9\-]{12,64})['"| ]'''
+entropy = 4.0 # Standard is usually 3.5+.

@@ -3,8 +3,8 @@ FROM php:8.1-apache
 RUN docker-php-ext-install mysqli && docker-php-ext-enable mysqli
 RUN apt-get update && apt-get upgrade -y
 # I think we should delete these lines below
-RUN apt-get install mariadb-client -y
-RUN apt-get install -y python3 sudo vim libcap2-bin fdisk net-tools netcat-openbsd curl unzip zip
+RUN apt-get install mariadb-client -y --no-install-recommends
+RUN apt-get install -y --no-install-recommends python3 sudo vim libcap2-bin fdisk net-tools netcat-openbsd curl unzip zip
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 COPY ./src /var/www/html
@@ -18,5 +18,6 @@ RUN echo "www-data ALL=NOPASSWD:/usr/bin/vim /var/www/html/documents" >> /etc/su
 
 RUN chmod 774 -R /var/www/html/documents
 
+USER www-data
 CMD ["/usr/local/bin/startup.sh"]
 EXPOSE 80
